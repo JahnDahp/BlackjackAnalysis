@@ -267,14 +267,14 @@ const CumulativeSettings = ({
             name="Run"
             onClick={() => {
               const sim = new Probabilities(dealerSettingValues);
-              sim.downloadHandProbabilities("stand");
+              // sim.downloadHandProbabilities("stand");
               // sim.downloadPairProbabilities();
               // sim.runSims();
-              // setDealerProbs(sim.getDealerData());
+              setDealerProbs(sim.getDealerData());
               // setStandProbs(sim.getCumulativeProbs("stand"));
               // setHitProbs(sim.getCumulativeProbs("hit"));
               // setDoubleProbs(sim.getCumulativeProbs("double"));
-              // setSplitProbs(sim.getSplitProbs());
+              setSplitProbs(sim.getSplitProbs());
             }}
             width="160px"
           />

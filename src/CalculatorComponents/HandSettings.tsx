@@ -7,9 +7,6 @@ import React, { useEffect, useState } from "react";
 import Button from "../GameComponents/Button";
 import PlayingCard from "../GameComponents/PlayingCard";
 import OddTableCell from "./OddTableCell";
-import standData from "../data/stand.json";
-import hitData from "../data/hit.json";
-import doubleData from "../data/double.json";
 
 function getPercent(value: number | null, baseDecimals: number): string {
   if (value === null || value === undefined) return "";
@@ -42,6 +39,29 @@ const HandSettings = ({
   useEffect(() => {
     setDealerProbabilities(new Probabilities(dealerSettingValues));
   }, [dealerSettingValues]);
+  const [dealerData, setDealerData] = useState<any>(null);
+  const [standData, setStandData] = useState<any>(null);
+  const [hitData, setHitData] = useState<any>(null);
+  const [doubleData, setDoubleData] = useState<any>(null);
+  const [splitData, setSplitData] = useState<any>(null);
+
+  useEffect(() => {
+    fetch("/data/dealer.json")
+      .then((res) => res.json())
+      .then(setDealerData);
+    fetch("/data/stand.json")
+      .then((res) => res.json())
+      .then(setStandData);
+    fetch("/data/hit.json")
+      .then((res) => res.json())
+      .then(setHitData);
+    fetch("/data/double.json")
+      .then((res) => res.json())
+      .then(setDoubleData);
+    fetch("/data/split.json")
+      .then((res) => res.json())
+      .then(setSplitData);
+  }, []);
 
   const upCardLabels = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "A"];
 

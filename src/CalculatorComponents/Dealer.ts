@@ -1,9 +1,5 @@
 import { DealerSettingsObject } from "../SettingsObjects";
-import dealerData from "../data/dealer.json";
-import standData from "../data/stand.json";
-import hitData from "../data/hit.json";
-import doubleData from "../data/double.json";
-import splitData from "../data/split.json";
+import loadData from "./LoadData";
 
 interface Card {
   rank: number;
@@ -18,8 +14,24 @@ export class Probabilities {
   static readonly SOFT_OFFSET = 28;
   static readonly SURRENDER_EV = -0.5;
   dealerSettings: DealerSettingsObject;
+  dealerData: any = null;
+  standData: any = null;
+  hitData: any = null;
+  doubleData: any = null;
+  splitData: any = null;
+
   constructor(dealerSettings: DealerSettingsObject) {
     this.dealerSettings = dealerSettings;
+    this.init();
+  }
+
+  async init() {
+    const data = await loadData();
+    this.dealerData = data.dealerData;
+    this.standData = data.standData;
+    this.hitData = data.hitData;
+    this.doubleData = data.doubleData;
+    this.splitData = data.splitData;
   }
 
   getDataSet(data: any) {
@@ -561,7 +573,7 @@ export class Probabilities {
   }
 
   getDealerData() {
-    return this.getDataSet((dealerData as any).outcomes);
+    return this.getDataSet((this.dealerData as any).outcomes);
   }
 
   // getCumulativeProbs(decision: string) {
@@ -634,7 +646,7 @@ export class Probabilities {
   // }
 
   getSplitData(cards: Card[], upCard: number) {
-    let dataSet = this.getDataSet((splitData as any).EV);
+    let dataSet = this.getDataSet((this.splitData as any).EV);
     let EV = -100;
     const handIndex = this.getHandIndex(cards, dataSet[upCard - 1]);
     if (handIndex !== -1) {
@@ -645,7 +657,7 @@ export class Probabilities {
 
   getSplitProbs() {
     const splits = [];
-    let dataSet = this.getDataSet((splitData as any).EV);
+    let dataSet = this.getDataSet((this.splitData as any).EV);
     for (let upCard = 1; upCard <= 10; upCard++) {
       const upcardResults = [];
       for (let totalTarget = 1; totalTarget <= 10; totalTarget++) {
@@ -787,7 +799,7 @@ export class Probabilities {
       if (excludeCards) {
         stand = this.calcStand(hand, upCard, excludeCards);
       } else {
-        stand = this.getData(hand, upCard, standData);
+        stand = this.getData(hand, upCard, this.standData);
       }
       const hitEV = this.calcHitEV(hit);
       const standEV = this.calcStandEV(hand, stand, excludeCards);
