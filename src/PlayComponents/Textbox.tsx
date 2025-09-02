@@ -1,5 +1,5 @@
 import React from "react";
-import "../PlayStyles/TextBox.css";
+import "../PlayStyles/Textbox.css";
 
 interface Props {
   value: string;
