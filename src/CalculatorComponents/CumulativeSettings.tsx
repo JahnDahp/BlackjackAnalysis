@@ -26,25 +26,50 @@ const CumulativeSettings = ({
   dealerSettingValues,
   dealerUpdateSetting,
 }: Props) => {
+  const [dealerData, setDealerData] = useState<any>(null);
+  const [standData, setStandData] = useState<any>(null);
+  const [hitData, setHitData] = useState<any>(null);
+  const [doubleData, setDoubleData] = useState<any>(null);
+  const [splitData, setSplitData] = useState<any>(null);
+  const [dealerProbs, setDealerProbs] = useState<any>(null);
+  const [standProbs, setStandProbs] = useState<any>(null);
+  const [hitProbs, setHitProbs] = useState<any>(null);
+  const [doubleProbs, setDoubleProbs] = useState<any>(null);
+  const [splitProbs, setSplitProbs] = useState<any>(null);
   const [dealerProbabilities, setDealerProbabilities] =
-    useState<Probabilities | null>(new Probabilities(dealerSettingValues));
-  const [dealerProbs, setDealerProbs] = useState<(number | null)[][]>([]);
-  const [standProbs, setStandProbs] = useState<{
-    hard: number[][];
-    soft: number[][];
-  }>();
-  const [hitProbs, setHitProbs] = useState<{
-    hard: number[][];
-    soft: number[][];
-  }>();
-  const [doubleProbs, setDoubleProbs] = useState<{
-    hard: number[][];
-    soft: number[][];
-  }>();
-  const [splitProbs, setSplitProbs] = useState<number[][]>([]);
+    useState<Probabilities | null>(null);
+
   useEffect(() => {
-    setDealerProbabilities(new Probabilities(dealerSettingValues));
+    async function loadProbabilities() {
+      const prob = await Probabilities.create(dealerSettingValues);
+      setDealerProbabilities(prob);
+    }
+    loadProbabilities();
   }, [dealerSettingValues]);
+
+  useEffect(() => {
+    fetch("/data/dealer.json")
+      .then((res) => res.json())
+      .then(setDealerData);
+    fetch("/data/stand.json")
+      .then((res) => res.json())
+      .then(setStandData);
+    fetch("/data/hit.json")
+      .then((res) => res.json())
+      .then(setHitData);
+    fetch("/data/double.json")
+      .then((res) => res.json())
+      .then(setDoubleData);
+    fetch("/data/split.json")
+      .then((res) => res.json())
+      .then(setSplitData);
+  }, []);
+
+  if (!dealerData) return <div className="settings-body">Loading...</div>;
+  if (!standData) return <div className="settings-body">Loading...</div>;
+  if (!hitData) return <div className="settings-body">Loading...</div>;
+  if (!doubleData) return <div className="settings-body">Loading...</div>;
+  if (!splitData) return <div className="settings-body">Loading...</div>;
 
   const keyMap = [
     "decks",
@@ -79,6 +104,25 @@ const CumulativeSettings = ({
     "19",
     "20",
     "21",
+  ];
+  const hardHandDoubleLabels = [
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+    "19",
+    "20",
   ];
   const softHandLabels = [
     "12",
@@ -236,6 +280,16 @@ const CumulativeSettings = ({
     return parsedValue;
   };
 
+  const runSimulation = async () => {
+    const sim = await Probabilities.create(dealerSettingValues);
+    setDealerProbabilities(sim);
+    setDealerProbs(sim.getDealerData());
+    setStandProbs(sim.getCumulativeProbs("stand"));
+    setHitProbs(sim.getCumulativeProbs("hit"));
+    setDoubleProbs(sim.getCumulativeProbs("double"));
+    setSplitProbs(sim.getSplitProbs());
+  };
+
   return (
     <div className="settings-body">
       {dealerSettings.map(({ label, options }, index) => {
@@ -258,29 +312,23 @@ const CumulativeSettings = ({
           </div>
         );
       })}
-      <div className="settings-body-title" key={"button"}>
-        <span className="settings-body-label">
-          {"Run cumulative simulation"}
-        </span>
-        <div className="settings-body-button">
-          <Button
-            name="Run"
-            onClick={() => {
-              const sim = new Probabilities(dealerSettingValues);
-              // sim.downloadHandProbabilities("stand");
-              // sim.downloadPairProbabilities();
-              // sim.runSims();
-              setDealerProbs(sim.getDealerData());
-              // setStandProbs(sim.getCumulativeProbs("stand"));
-              // setHitProbs(sim.getCumulativeProbs("hit"));
-              // setDoubleProbs(sim.getCumulativeProbs("double"));
-              setSplitProbs(sim.getSplitProbs());
-            }}
-            width="160px"
-          />
+      {dealerProbabilities && (
+        <div className="settings-body-title" key={"button"}>
+          <span className="settings-body-label">
+            {"Run cumulative simulation"}
+          </span>
+          <div className="settings-body-button">
+            <Button
+              name="Run"
+              onClick={() => {
+                runSimulation();
+              }}
+              width="160px"
+            />
+          </div>
         </div>
-      </div>
-      {dealerProbs?.length > 0 && (
+      )}
+      {dealerProbs && (
         <div className="calculator-settings-body-table">
           <>
             <OddTableCell value="Dealer" key={"dealer"} />
@@ -306,7 +354,7 @@ const CumulativeSettings = ({
           </>
         </div>
       )}
-      {(standProbs?.hard.length ?? 0) > 0 && (
+      {standProbs && (
         <div className="calculator-settings-body-table">
           <>
             <OddTableCell value="Stand" key={"stand"} />
@@ -329,7 +377,7 @@ const CumulativeSettings = ({
           </>
         </div>
       )}
-      {(standProbs?.soft.length ?? 0) > 0 && (
+      {standProbs && (
         <div className="calculator-settings-body-table">
           <>
             <OddTableCell value="StandS" key={"stand-s"} />
@@ -352,7 +400,7 @@ const CumulativeSettings = ({
           </>
         </div>
       )}
-      {(hitProbs?.hard.length ?? 0) > 0 && (
+      {hitProbs && (
         <div className="calculator-settings-body-table">
           <>
             <OddTableCell value="Hit" key={"hit"} />
@@ -375,7 +423,7 @@ const CumulativeSettings = ({
           </>
         </div>
       )}
-      {(hitProbs?.soft.length ?? 0) > 0 && (
+      {hitProbs && (
         <div className="calculator-settings-body-table">
           <>
             <OddTableCell value="HitS" key={"hit-s"} />
@@ -398,14 +446,14 @@ const CumulativeSettings = ({
           </>
         </div>
       )}
-      {(doubleProbs?.hard.length ?? 0) > 0 && (
+      {doubleProbs && (
         <div className="calculator-settings-body-table">
           <>
             <OddTableCell value="Double" key={"double"} />
             {upCardLabels.map((upLabel, upIndex) => (
               <OddTableCell key={`${upIndex}`} value={upLabel} />
             ))}
-            {hardHandLabels.map((outLabel, outIndex) => (
+            {hardHandDoubleLabels.map((outLabel, outIndex) => (
               <>
                 <OddTableCell value={outLabel} />
                 {upCardLabels.map((_, upIndex) => (
@@ -421,7 +469,7 @@ const CumulativeSettings = ({
           </>
         </div>
       )}
-      {(doubleProbs?.soft.length ?? 0) > 0 && (
+      {doubleProbs && (
         <div className="calculator-settings-body-table">
           <>
             <OddTableCell value="DoubleS" key={"double-s"} />
@@ -444,7 +492,7 @@ const CumulativeSettings = ({
           </>
         </div>
       )}
-      {(splitProbs?.length ?? 0) > 0 && (
+      {splitProbs && (
         <div className="calculator-settings-body-table">
           <>
             <OddTableCell value="Splits" key={"split"} />

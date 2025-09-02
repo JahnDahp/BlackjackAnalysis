@@ -31,19 +31,25 @@ const HandSettings = ({
   dealerSettingValues,
   dealerUpdateSetting,
 }: Props) => {
-  const [dealerProbabilities, setDealerProbabilities] =
-    useState<Probabilities | null>(new Probabilities(dealerSettingValues));
   const [showError, setShowError] = useState<boolean>(false);
   const [table, setTable] = useState<(number | string)[][]>([]);
+  const [choiceLabels, setChoiceLabels] = useState<string[]>([]);
   const [hand, setHand] = useState<Card[]>([]);
-  useEffect(() => {
-    setDealerProbabilities(new Probabilities(dealerSettingValues));
-  }, [dealerSettingValues]);
   const [dealerData, setDealerData] = useState<any>(null);
   const [standData, setStandData] = useState<any>(null);
   const [hitData, setHitData] = useState<any>(null);
   const [doubleData, setDoubleData] = useState<any>(null);
   const [splitData, setSplitData] = useState<any>(null);
+  const [dealerProbabilities, setDealerProbabilities] =
+    useState<Probabilities | null>(null);
+
+  useEffect(() => {
+    async function loadProbabilities() {
+      const prob = await Probabilities.create(dealerSettingValues);
+      setDealerProbabilities(prob);
+    }
+    loadProbabilities();
+  }, [dealerSettingValues]);
 
   useEffect(() => {
     fetch("/data/dealer.json")
@@ -63,10 +69,13 @@ const HandSettings = ({
       .then(setSplitData);
   }, []);
 
+  if (!dealerData) return <div className="settings-body">Loading...</div>;
+  if (!standData) return <div className="settings-body">Loading...</div>;
+  if (!hitData) return <div className="settings-body">Loading...</div>;
+  if (!doubleData) return <div className="settings-body">Loading...</div>;
+  if (!splitData) return <div className="settings-body">Loading...</div>;
+
   const upCardLabels = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "A"];
-
-  const choiceLabels = ["Stand", "Hit", "Double", "Split", "Surr", "Best"];
-
   const keyMap = [
     "decks",
     "S17",
@@ -238,21 +247,44 @@ const HandSettings = ({
       : "Surr";
   };
 
-  const getTableValues = () => {
-    const sim = new Probabilities(dealerSettingValues);
+  const getTableValues = async () => {
+    const sim = await Probabilities.create(dealerSettingValues);
+    setDealerProbabilities(sim);
+
+    if (!sim) return null;
     const table = [];
     for (let i = 2; i <= 11; i++) {
       const upCard = i === 11 ? 1 : i;
       let upCardResults = [];
-      upCardResults.push(sim.getData(hand, upCard, standData));
-      upCardResults.push(sim.getData(hand, upCard, hitData));
-      upCardResults.push(sim.getData(hand, upCard, doubleData));
-      upCardResults.push(sim.getSplitData(hand, upCard));
-      upCardResults.push(-0.5);
-      // upCardResults.push(getBestEV(upCardResults));
+      if (sim.getSplitData(hand, upCard) !== -100) {
+        upCardResults = [
+          sim.getData(hand, upCard, standData),
+          sim.getData(hand, upCard, hitData),
+          sim.getData(hand, upCard, doubleData),
+          sim.getSplitData(hand, upCard),
+          -0.5,
+        ];
+        setChoiceLabels(["Stand", "Hit", "Double", "Split", "Surr", "Best"]);
+      } else {
+        upCardResults = [
+          sim.getData(hand, upCard, standData),
+          sim.getData(hand, upCard, hitData),
+          sim.getData(hand, upCard, doubleData),
+          -0.5,
+        ];
+        setChoiceLabels(["Stand", "Hit", "Double", "Surr", "Best"]);
+      }
+      upCardResults.push(getBestEV(upCardResults));
       table.push(upCardResults);
     }
     return table;
+  };
+
+  const runSimulation = async () => {
+    const tableValues = await getTableValues();
+    if (tableValues) {
+      setTable(tableValues);
+    }
   };
 
   return (
@@ -316,21 +348,23 @@ const HandSettings = ({
           </div>
         </div>
       )}
-      <div className="settings-body-title" key={"button"}>
-        <span className="settings-body-label">{"Run hand simulation"}</span>
-        <div className="settings-body-button">
-          <Button
-            name="Run"
-            onClick={() => {
-              const invalid = isValidHand();
-              setShowError(invalid);
-              if (invalid) return;
-              // setTable(getTableValues());
-            }}
-            width="160px"
-          />
+      {dealerProbabilities && (
+        <div className="settings-body-title" key={"button"}>
+          <span className="settings-body-label">{"Run hand simulation"}</span>
+          <div className="settings-body-button">
+            <Button
+              name="Run"
+              onClick={() => {
+                const invalid = isValidHand();
+                setShowError(invalid);
+                if (invalid) return;
+                runSimulation();
+              }}
+              width="160px"
+            />
+          </div>
         </div>
-      </div>
+      )}
       {showError && (
         <div className="settings-body-title" key="player-cards">
           <span style={{ textWrap: "nowrap" }}>{"Invalid hand"}</span>

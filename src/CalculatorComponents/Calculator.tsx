@@ -19,7 +19,7 @@ const Calculator = ({
 }: Props) => {
   const [selectedHeader, setSelectedHeader] = useState(0);
 
-  const headers = ["Cumulative", "Hand", "EV", "House Edge"];
+  const headers = ["Cumulative", "Hand"];
 
   const calculatorSettings = [
     {

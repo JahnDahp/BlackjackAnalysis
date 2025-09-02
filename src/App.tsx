@@ -271,6 +271,7 @@ function App() {
             />
           }
         />
+        <Route path="/sim" element={<div>Coming Soon!</div>} />
       </Routes>
     </div>
   );

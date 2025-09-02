@@ -20,18 +20,20 @@ export class Probabilities {
   doubleData: any = null;
   splitData: any = null;
 
-  constructor(dealerSettings: DealerSettingsObject) {
+  private constructor(dealerSettings: DealerSettingsObject) {
     this.dealerSettings = dealerSettings;
-    this.init();
   }
 
-  async init() {
+  // Static factory method
+  static async create(dealerSettings: DealerSettingsObject): Promise<Probabilities> {
+    const instance = new Probabilities(dealerSettings); // pass settings here
     const data = await loadData();
-    this.dealerData = data.dealerData;
-    this.standData = data.standData;
-    this.hitData = data.hitData;
-    this.doubleData = data.doubleData;
-    this.splitData = data.splitData;
+    instance.dealerData = data.dealerData;
+    instance.standData = data.standData;
+    instance.hitData = data.hitData;
+    instance.doubleData = data.doubleData;
+    instance.splitData = data.splitData;
+    return instance;
   }
 
   getDataSet(data: any) {
@@ -241,11 +243,11 @@ export class Probabilities {
                     calculation = this.calcStand(hand.hand, upCard);
                   if (decision === "hit")
                     calculation = this.calcHit(hand.hand, upCard);
-                  // if (decision === "double")
-                  //   calculation = this.calculateDoubleForHand(
-                  //     hand.hand,
-                  //     upCard
-                  //   );
+                  if (decision === "double")
+                    calculation = this.calculateDoubleForHand(
+                      hand.hand,
+                      upCard
+                    );
                   upcardResults.push([hand.hand, hand.totalProb, calculation]);
                 }
               }
@@ -286,73 +288,73 @@ export class Probabilities {
     URL.revokeObjectURL(url);
   }
 
-  // downloadPairProbabilities() {
-  //   const deckKeys = [1, 2, 4, 6, 8];
-  //   let currentDeckCount = [];
-  //   for (let decks of deckKeys) {
-  //     let currentS17 = [];
-  //     for (let soft17 of [false, true]) {
-  //       let currentEnhc = [];
-  //       for (let euro of [false, true]) {
-  //         this.dealerSettings = {
-  //           ...this.dealerSettings,
-  //           decks,
-  //           S17: soft17,
-  //           ENHC: euro,
-  //         };
+  downloadPairProbabilities() {
+    const deckKeys = [1, 2, 4, 6, 8];
+    let currentDeckCount = [];
+    for (let decks of deckKeys) {
+      let currentS17 = [];
+      for (let soft17 of [false, true]) {
+        let currentEnhc = [];
+        for (let euro of [false, true]) {
+          this.dealerSettings = {
+            ...this.dealerSettings,
+            decks,
+            S17: soft17,
+            ENHC: euro,
+          };
 
-  //         const fullTable = [];
-  //         for (let upCard = 1; upCard <= 10; upCard++) {
-  //           const upcardResults = [];
+          const fullTable = [];
+          for (let upCard = 1; upCard <= 10; upCard++) {
+            const upcardResults = [];
 
-  //           for (let pairVal = 1; pairVal <= 10; pairVal++) {
-  //             console.log(
-  //               `${decks}Decks, ${soft17 ? "S17" : "H17"}, ${
-  //                 euro ? "ENHC" : "US"
-  //               }, Hard ${pairVal} vs ${upCard === 1 ? "A" : upCard}`
-  //             );
-  //             let EV = this.calculateSplitForHand(
-  //               [{ rank: pairVal }, { rank: pairVal }],
-  //               upCard,
-  //               2
-  //             );
-  //             upcardResults.push([[{ rank: pairVal }, { rank: pairVal }], EV]);
-  //           }
-  //           fullTable.push(upcardResults);
-  //         }
-  //         currentEnhc.push(fullTable);
-  //       }
-  //       const us = currentEnhc[0];
-  //       const enhc = currentEnhc[1];
-  //       currentS17.push({ us, enhc });
-  //     }
-  //     const H17 = currentS17[0];
-  //     const S17 = currentS17[1];
-  //     currentDeckCount.push({ H17, S17 });
-  //   }
-  //   const oneDeck = currentDeckCount[0];
-  //   const twoDeck = currentDeckCount[1];
-  //   const fourDeck = currentDeckCount[2];
-  //   const sixDeck = currentDeckCount[3];
-  //   const eightDeck = currentDeckCount[4];
+            for (let pairVal = 1; pairVal <= 10; pairVal++) {
+              console.log(
+                `${decks}Decks, ${soft17 ? "S17" : "H17"}, ${
+                  euro ? "ENHC" : "US"
+                }, Hard ${pairVal} vs ${upCard === 1 ? "A" : upCard}`
+              );
+              let EV = this.calculateSplitForHand(
+                [{ rank: pairVal }, { rank: pairVal }],
+                upCard,
+                2
+              );
+              upcardResults.push([[{ rank: pairVal }, { rank: pairVal }], EV]);
+            }
+            fullTable.push(upcardResults);
+          }
+          currentEnhc.push(fullTable);
+        }
+        const us = currentEnhc[0];
+        const enhc = currentEnhc[1];
+        currentS17.push({ us, enhc });
+      }
+      const H17 = currentS17[0];
+      const S17 = currentS17[1];
+      currentDeckCount.push({ H17, S17 });
+    }
+    const oneDeck = currentDeckCount[0];
+    const twoDeck = currentDeckCount[1];
+    const fourDeck = currentDeckCount[2];
+    const sixDeck = currentDeckCount[3];
+    const eightDeck = currentDeckCount[4];
 
-  //   const cache = {
-  //     EV: { oneDeck, twoDeck, fourDeck, sixDeck, eightDeck },
-  //   };
+    const cache = {
+      EV: { oneDeck, twoDeck, fourDeck, sixDeck, eightDeck },
+    };
 
-  //   const blob = new Blob([JSON.stringify(cache)], {
-  //     type: "application/json",
-  //   });
+    const blob = new Blob([JSON.stringify(cache)], {
+      type: "application/json",
+    });
 
-  //   const url = URL.createObjectURL(blob);
-  //   const a = document.createElement("a");
-  //   a.href = url;
-  //   a.download = `split.json`;
-  //   document.body.appendChild(a);
-  //   a.click();
-  //   document.body.removeChild(a);
-  //   URL.revokeObjectURL(url);
-  // }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `split.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
   runDealerSim() {
     let upCardOutcomes = [];
@@ -576,74 +578,74 @@ export class Probabilities {
     return this.getDataSet((this.dealerData as any).outcomes);
   }
 
-  // getCumulativeProbs(decision: string) {
-  //   let data =
-  //     decision === "stand"
-  //       ? standData
-  //       : decision === "hit"
-  //       ? hitData
-  //       : decision === "double"
-  //       ? doubleData
-  //       : null;
-  //   const hard = [];
-  //   for (let upCard = 1; upCard <= 10; upCard++) {
-  //     const upcardResults = [];
-  //     for (let totalTarget = 4; totalTarget <= 21; totalTarget++) {
-  //       const candidateHands = this.runHandSim(
-  //         totalTarget,
-  //         upCard,
-  //         false
-  //       ).allHands;
-  //       let EVs = [];
-  //       let probs = [];
-  //       for (let hand of candidateHands) {
-  //         if (decision === "double" && hand.hand.length > 2) continue;
-  //         const handTotal = this.total(hand.hand);
-  //         if (handTotal === totalTarget) {
-  //           EVs.push(this.getData(hand.hand, upCard, data));
-  //           probs.push(hand.totalProb);
-  //         }
-  //       }
-  //       probs = this.normalize(probs);
-  //       let totalEV = 0;
-  //       for (let i = 0; i < EVs.length; i++) {
-  //         totalEV += EVs[i] * probs[i];
-  //       }
-  //       upcardResults.push(totalEV);
-  //     }
-  //     hard.push(upcardResults);
-  //   }
+  getCumulativeProbs(decision: string) {
+    let data =
+      decision === "stand"
+        ? this.standData
+        : decision === "hit"
+        ? this.hitData
+        : decision === "double"
+        ? this.doubleData
+        : null;
+    const hard = [];
+    for (let upCard = 1; upCard <= 10; upCard++) {
+      const upcardResults = [];
+      for (let totalTarget = 4; totalTarget <= 21; totalTarget++) {
+        const candidateHands = this.runHandSim(
+          totalTarget,
+          upCard,
+          false
+        ).allHands;
+        let EVs = [];
+        let probs = [];
+        for (let hand of candidateHands) {
+          if (decision === "double" && hand.hand.length > 2) continue;
+          const handTotal = this.total(hand.hand);
+          if (handTotal === totalTarget) {
+            EVs.push(this.getData(hand.hand, upCard, data));
+            probs.push(hand.totalProb);
+          }
+        }
+        probs = this.normalize(probs);
+        let totalEV = 0;
+        for (let i = 0; i < EVs.length; i++) {
+          totalEV += EVs[i] * probs[i];
+        }
+        upcardResults.push(totalEV);
+      }
+      hard.push(upcardResults);
+    }
 
-  //   const soft = [];
-  //   for (let upCard = 1; upCard <= 10; upCard++) {
-  //     const upcardResults = [];
-  //     for (let totalTarget = 12; totalTarget <= 21; totalTarget++) {
-  //       const candidateHands = this.runHandSim(
-  //         totalTarget,
-  //         upCard,
-  //         true
-  //       ).allHands;
-  //       let EVs = [];
-  //       let probs = [];
-  //       for (let hand of candidateHands) {
-  //         if (decision === "double" && hand.hand.length > 2) continue;
-  //         const handTotal = this.total(hand.hand);
-  //         if (handTotal === totalTarget) {
-  //           EVs.push(this.getData(hand.hand, upCard, data));
-  //           probs.push(hand.totalProb);
-  //         }
-  //       }
-  //       probs = this.normalize(probs);
-  //       let totalEV = 0;
-  //       for (let i = 0; i < EVs.length; i++) {
-  //         totalEV += EVs[i] * probs[i];
-  //       }
-  //       upcardResults.push(totalEV);
-  //     }
-  //     soft.push(upcardResults);
-  //   }
-  //   return { hard, soft };
-  // }
+    const soft = [];
+    for (let upCard = 1; upCard <= 10; upCard++) {
+      const upcardResults = [];
+      for (let totalTarget = 12; totalTarget <= 21; totalTarget++) {
+        const candidateHands = this.runHandSim(
+          totalTarget,
+          upCard,
+          true
+        ).allHands;
+        let EVs = [];
+        let probs = [];
+        for (let hand of candidateHands) {
+          if (decision === "double" && hand.hand.length > 2) continue;
+          const handTotal = this.total(hand.hand);
+          if (handTotal === totalTarget) {
+            EVs.push(this.getData(hand.hand, upCard, data));
+            probs.push(hand.totalProb);
+          }
+        }
+        probs = this.normalize(probs);
+        let totalEV = 0;
+        for (let i = 0; i < EVs.length; i++) {
+          totalEV += EVs[i] * probs[i];
+        }
+        upcardResults.push(totalEV);
+      }
+      soft.push(upcardResults);
+    }
+    return { hard, soft };
+  }
 
   getSplitData(cards: Card[], upCard: number) {
     let dataSet = this.getDataSet((this.splitData as any).EV);
@@ -685,12 +687,7 @@ export class Probabilities {
     cards: Card[],
     upCard: number,
     excludeCards?: Card[]
-  ): {
-    winProb: number;
-    tieProb: number;
-    loseProb: number;
-    DBJ: number;
-  } {
+  ) {
     const total = this.total(cards);
     let winProb = 0;
     let tieProb = 0;
@@ -700,7 +697,7 @@ export class Probabilities {
 
     if (total > 21) {
       loseProb = 1;
-      return { winProb, tieProb, loseProb, DBJ };
+      return this.calcStandEV(cards, { winProb, tieProb, loseProb, DBJ }, excludeCards);
     }
 
     const dealerProbs = this.runDealerSimGivenCards(
@@ -717,7 +714,7 @@ export class Probabilities {
         tieProb = DBJ;
         winProb = 1 - tieProb;
       }
-      return { winProb, tieProb, loseProb, DBJ };
+      return this.calcStandEV(cards, { winProb, tieProb, loseProb, DBJ }, excludeCards);
     }
 
     winProb += dealerProbs.result[outcome++] ?? 0;
@@ -733,7 +730,7 @@ export class Probabilities {
     if (this.dealerSettings.ENHC) {
       loseProb += dealerProbs.result[outcome] ?? 0;
     }
-    return { winProb, tieProb, loseProb, DBJ };
+    return this.calcStandEV(cards, { winProb, tieProb, loseProb, DBJ }, excludeCards);
   }
 
   calcStandEV(
@@ -770,12 +767,7 @@ export class Probabilities {
     cards: Card[],
     upCard: number,
     excludeCards?: Card[]
-  ): {
-    winProb: number;
-    tieProb: number;
-    loseProb: number;
-    DBJ: number;
-  } {
+  ) {
     let winProb = 0;
     let tieProb = 0;
     let loseProb = 0;
@@ -792,31 +784,18 @@ export class Probabilities {
     for (let nextRank = 1; nextRank <= 10; nextRank++) {
       if (shoe.filter((c) => c.rank === nextRank).length === 0) continue;
       const hand = [...cards, { rank: nextRank }];
-      let hit = this.calcHit(hand, upCard, excludeCards);
 
-      let stand;
-
+      let standEV;
       if (excludeCards) {
-        stand = this.calcStand(hand, upCard, excludeCards);
+        standEV = this.calcStand(hand, upCard, excludeCards);
       } else {
-        stand = this.getData(hand, upCard, this.standData);
+        standEV = this.getData(hand, upCard, this.standData);
       }
-      const hitEV = this.calcHitEV(hit);
-      const standEV = this.calcStandEV(hand, stand, excludeCards);
+      const hitEV = this.calcHit(hand, upCard, excludeCards);
       const maxEV = Math.max(hitEV, standEV);
-      if (maxEV === hitEV) {
-        winProb += hit.winProb * nextCardProbs[nextRank - 1];
-        tieProb += hit.tieProb * nextCardProbs[nextRank - 1];
-        loseProb += hit.loseProb * nextCardProbs[nextRank - 1];
-        DBJ += hit.DBJ * nextCardProbs[nextRank - 1];
-      } else if (maxEV === standEV) {
-        winProb += stand.winProb * nextCardProbs[nextRank - 1];
-        tieProb += stand.tieProb * nextCardProbs[nextRank - 1];
-        loseProb += stand.loseProb * nextCardProbs[nextRank - 1];
-        DBJ += stand.DBJ * nextCardProbs[nextRank - 1];
-      }
+      EV += maxEV * nextCardProbs[nextRank - 1]
     }
-    return { winProb, tieProb, loseProb, DBJ };
+    return EV;
   }
 
   calcHitEV(hit: {
@@ -837,74 +816,66 @@ export class Probabilities {
     return 1 - hit.tieProb - (this.calcHitEV(hit) ^ 2);
   }
 
-  // calculateDoubleForHand(cards: Card[], upCard: number, excludeCards?: Card[]) {
-  //   let shoe = this.genShoe();
+  calculateDoubleForHand(cards: Card[], upCard: number, excludeCards?: Card[]) {
+    let shoe = this.genShoe();
 
-  //   if (excludeCards) this.removeCardsFromShoe(shoe, excludeCards);
-  //   this.removeCardsFromShoe(shoe, cards);
-  //   this.removeCardsFromShoe(shoe, [{ rank: upCard }]);
+    if (excludeCards) this.removeCardsFromShoe(shoe, excludeCards);
+    this.removeCardsFromShoe(shoe, cards);
+    this.removeCardsFromShoe(shoe, [{ rank: upCard }]);
 
-  //   let nextCardProbs = this.getNextCardProb(shoe, upCard);
+    let nextCardProbs = this.getNextCardProb(shoe, upCard);
 
-  //   let hitEV = 0;
-  //   for (let nextRank = 1; nextRank <= 10; nextRank++) {
-  //     if (shoe.filter((c) => c.rank === nextRank).length === 0) continue;
+    let hitEV = 0;
+    for (let nextRank = 1; nextRank <= 10; nextRank++) {
+      if (shoe.filter((c) => c.rank === nextRank).length === 0) continue;
 
-  //     let nextStand = 0;
-  //     if (excludeCards) {
-  //       let stand = this.calcStand(
-  //         [...cards, { rank: nextRank }],
-  //         upCard,
-  //         excludeCards
-  //       );
-  //       nextStand = this.calcStandEV(
-  //         [...cards, { rank: nextRank }],
-  //         stand,
-  //         excludeCards
-  //       );
-  //     } else {
-  //       nextStand = this.getData(
-  //         [...cards, { rank: nextRank }],
-  //         upCard,
-  //         standData
-  //       );
-  //     }
+      let nextStand = 0;
+      if (excludeCards) {
+        nextStand = this.calcStand(
+          [...cards, { rank: nextRank }],
+          upCard,
+          excludeCards
+        );
+      } else {
+        nextStand = this.getData(
+          [...cards, { rank: nextRank }],
+          upCard,
+          this.standData
+        );
+      }
 
-  //     hitEV += nextStand * nextCardProbs[nextRank - 1];
-  //   }
-  //   return 2 * hitEV;
-  // }
+      hitEV += nextStand * nextCardProbs[nextRank - 1];
+    }
+    return 2 * hitEV;
+  }
 
-  // calculateSplitForHand(cards: Card[], upCard: number, hands: number) {
-  //   if (cards.length != 2) return -99;
-  //   if (cards[0].rank != cards[1].rank) return -99;
-  //   if (hands > this.dealerSettings.splits + 1) return -99;
+  calculateSplitForHand(cards: Card[], upCard: number, hands: number) {
+    if (cards.length != 2) return -99;
+    if (cards[0].rank != cards[1].rank) return -99;
+    if (hands > this.dealerSettings.splits + 1) return -99;
 
-  //   let shoe = this.genShoe();
-  //   this.removeCardsFromShoe(shoe, cards);
-  //   this.removeCardsFromShoe(shoe, [{ rank: upCard }]);
+    let shoe = this.genShoe();
+    this.removeCardsFromShoe(shoe, cards);
+    this.removeCardsFromShoe(shoe, [{ rank: upCard }]);
 
-  //   let fullSplitEv = 0;
-  //   let nextCardProbs = this.getNextCardProb(shoe, upCard);
-  //   for (let nextRank = 1; nextRank <= 10; nextRank++) {
-  //     if (nextCardProbs[nextRank - 1] === 0) continue;
-  //     let EV = -99;
-  //     if (cards[0].rank === 1 && !this.dealerSettings.drawAces) {
-  //       let stand = this.calcStand([cards[0], { rank: nextRank }], upCard, [
-  //         cards[1],
-  //       ]);
-  //       EV = this.calcStandEV([cards[0], { rank: nextRank }], stand, [
-  //         cards[1],
-  //       ]);
-  //     } else {
-  //       EV = this.getMaxHSD([cards[0], { rank: nextRank }], upCard, [
-  //         cards[1],
-  //       ]).EV;
-  //     }
-  //     fullSplitEv += EV * nextCardProbs[nextRank - 1];
-  //   }
-  //   return fullSplitEv * 2;
-  // }
+    let fullSplitEv = 0;
+    let nextCardProbs = this.getNextCardProb(shoe, upCard);
+    for (let nextRank = 1; nextRank <= 10; nextRank++) {
+      if (nextCardProbs[nextRank - 1] === 0) continue;
+      let EV = -99;
+      if (cards[0].rank === 1 && !this.dealerSettings.drawAces) {
+        EV = this.calcStand([cards[0], { rank: nextRank }], upCard, [
+          cards[1],
+        ]);
+      } else {
+        EV = this.getMaxHSD([cards[0], { rank: nextRank }], upCard, [
+          cards[1],
+        ]).EV;
+      }
+      fullSplitEv += EV * nextCardProbs[nextRank - 1];
+    }
+    return fullSplitEv * 2;
+  }
 
   // calculateSplitForHandOldWay(
   //   cards: Card[],
@@ -1011,36 +982,35 @@ export class Probabilities {
   //   return { allHands, allProbs };
   // }
 
-  // getMaxHSD(cards: Card[], upCard: number, excludeCards?: Card[]) {
-  //   let nextStand = 0;
-  //   if (excludeCards) {
-  //     let stand = this.calcStand(cards, upCard, excludeCards);
-  //     nextStand = this.calcStandEV(cards, stand, excludeCards);
-  //   } else {
-  //     nextStand = this.getData(cards, upCard, standData);
-  //   }
+  getMaxHSD(cards: Card[], upCard: number, excludeCards?: Card[]) {
+    let nextStand = 0;
+    if (excludeCards) {
+      nextStand = this.calcStand(cards, upCard, excludeCards);
+    } else {
+      nextStand = this.getData(cards, upCard, this.standData);
+    }
 
-  //   let nextHit = 0;
-  //   if (excludeCards) {
-  //     nextHit = this.calcHit(cards, upCard, excludeCards);
-  //   } else {
-  //     nextHit = this.getData(cards, upCard, hitData);
-  //   }
+    let nextHit = 0;
+    if (excludeCards) {
+      nextHit = this.calcHit(cards, upCard, excludeCards);
+    } else {
+      nextHit = this.getData(cards, upCard, this.hitData);
+    }
 
-  //   let nextDouble = null;
-  //   if (this.canDouble(cards) && this.dealerSettings.DAS) {
-  //     if (excludeCards) {
-  //       nextDouble = this.calculateDoubleForHand(cards, upCard, excludeCards);
-  //     } else {
-  //       nextDouble = this.getData(cards, upCard, doubleData);
-  //     }
-  //   }
-  //   const options = [nextStand, nextHit];
-  //   if (nextDouble !== null) options.push(nextDouble);
-  //   const EV = Math.max(...options);
-  //   const result = EV === nextStand ? "S" : EV === nextHit ? "H" : "D";
-  //   return { EV, result };
-  // }
+    let nextDouble = null;
+    if (this.canDouble(cards) && this.dealerSettings.DAS) {
+      if (excludeCards) {
+        nextDouble = this.calculateDoubleForHand(cards, upCard, excludeCards);
+      } else {
+        nextDouble = this.getData(cards, upCard, this.doubleData);
+      }
+    }
+    const options = [nextStand, nextHit];
+    if (nextDouble !== null) options.push(nextDouble);
+    const EV = Math.max(...options);
+    const result = EV === nextStand ? "S" : EV === nextHit ? "H" : "D";
+    return { EV, result };
+  }
 
   getNextCardProb(shoe: Card[], upCard: number) {
     let nextCardProbs = [];
@@ -1080,8 +1050,8 @@ export class Probabilities {
     );
   }
 
+  // Generates a random shoe of a given deck count
   genShoe() {
-    // Generates a random shoe of a given deck count
     let shoe = [];
     for (let deck = 0; deck < this.dealerSettings.decks; deck++) {
       for (let s = 1; s <= 4; s++) {
@@ -1099,7 +1069,6 @@ export class Probabilities {
     shoe: Card[],
     cards: Card[],
     prob?: number,
-    log?: boolean
   ) {
     for (let card of cards) {
       const count = shoe.filter((c) => c.rank === card.rank).length;
@@ -1111,8 +1080,8 @@ export class Probabilities {
     return prob;
   }
 
+  // Determines if a hand is soft
   isSoft(cards: Card[]) {
-    // Determines if a hand is soft
     let total = 0;
     let numAces = 0;
 
@@ -1129,8 +1098,8 @@ export class Probabilities {
     return numAces > 0;
   }
 
+  // Calculates the total of a hand
   total(cards: Card[]) {
-    // Calculates the total of a hand
     let total = 0;
     let numAces = 0;
 
@@ -1151,6 +1120,8 @@ export class Probabilities {
     return total;
   }
 
+  // Returns an array of possible dealer hands,
+  // and a probability matrix with the probability of each card being drawn in that hand
   dealerOutcomeGenerator(
     dealerHand: Card[],
     outcomes: Card[][],
@@ -1159,9 +1130,6 @@ export class Probabilities {
     shoe: Card[],
     playerBJ: boolean
   ): void {
-    // Returns an array of possible dealer hands,
-    // and a probability matrix with the probability of each card being drawn in that hand
-
     // If the player has a blackjack and the dealer's hole card is revealed, the dealer must stop drawing
     if (playerBJ && dealerHand.length >= 2) {
       outcomes.push(dealerHand);
@@ -1209,8 +1177,8 @@ export class Probabilities {
     }
   }
 
+  // Returns dealer hand totals
   getDealerTotals(outcomes: Card[][]) {
-    // Returns dealer hand totals
     let totals = [];
     for (let hand of outcomes) {
       totals.push(this.total(hand));
@@ -1218,8 +1186,8 @@ export class Probabilities {
     return totals;
   }
 
+  // Computes the total probabilites of each hand from the probabilities of each card
   getTotalProbabilities(probabilities: number[][]) {
-    // Computes the total probabilites of each hand from the probabilities of each card
     let totalProbs = Array(probabilities.length).fill(1);
     for (let handIndex = 0; handIndex < probabilities.length; handIndex++) {
       for (let prob of probabilities[handIndex]) {
@@ -1229,8 +1197,8 @@ export class Probabilities {
     return totalProbs;
   }
 
+  // Returns normalized probabilities of a dealer reaching a given dealer outcome, Bust, 17, 18, 19, 20, 21, BJ
   getOutcomeProbabilities(outcomes: Card[][], probabilities: number[]) {
-    // Returns normalized probabilities of a dealer reaching a given dealer outcome, Bust, 17, 18, 19, 20, 21, BJ
     let counts = this.getDealerOutcomeCounts(outcomes, probabilities);
     if (!this.dealerSettings.ENHC) {
       const DBJ = counts[6];
@@ -1240,8 +1208,8 @@ export class Probabilities {
     return [...this.normalize(counts)];
   }
 
+  // Returns the counted dealer outcomes
   getDealerOutcomeCounts(outcomes: Card[][], probabilities: number[]) {
-    // Returns the counted dealer outcomes
     const totals = this.getDealerTotals(outcomes);
     let counts = [0, 0, 0, 0, 0, 0, 0];
     for (let i = 0; i < totals.length; i++) {
@@ -1258,8 +1226,8 @@ export class Probabilities {
     return counts;
   }
 
+  // Normalizes an array of numbers
   normalize(arr: number[]) {
-    // Normalizes an array of numbers
     let sum = arr.reduce((acc, val) => acc + val, 0);
     for (let i = 0; i < arr.length; i++) {
       arr[i] = arr[i] / sum;
@@ -1283,7 +1251,7 @@ export class Probabilities {
     cards: Card[],
     upCard: number,
     data: any
-  ): { winProb: number; tieProb: number; loseProb: number; DBJ: number } {
+  ) {
     let dataSet = this.getDataSet((data as any).EV);
     const softHand = this.isSoft(cards);
     if (softHand) {

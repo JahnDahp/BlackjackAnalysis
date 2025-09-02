@@ -48,6 +48,7 @@ const Game = ({
     );
     game.playGame();
     setBlackjackGame(game);
+    setUpdateCounter((prev) => !prev);
   }, []);
 
   return (
