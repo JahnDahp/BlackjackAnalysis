@@ -244,7 +244,7 @@ export class Probabilities {
                   if (decision === "hit")
                     calculation = this.calcHit(hand.hand, upCard);
                   if (decision === "double")
-                    calculation = this.calculateDoubleForHand(
+                    calculation = this.calcDouble(
                       hand.hand,
                       upCard
                     );
@@ -315,8 +315,7 @@ export class Probabilities {
               );
               let EV = this.calculateSplitForHand(
                 [{ rank: pairVal }, { rank: pairVal }],
-                upCard,
-                2
+                upCard
               );
               upcardResults.push([[{ rank: pairVal }, { rank: pairVal }], EV]);
             }
@@ -386,10 +385,7 @@ export class Probabilities {
         false
       );
       upCardOutcomes.push(
-        this.getOutcomeProbabilities(
-          outcomes,
-          this.getTotalProbabilities(probabilities)
-        )
+        this.getDealerOutcomeCounts(outcomes, this.getTotalProbabilities(probabilities))
       );
     }
     return upCardOutcomes;
@@ -428,10 +424,8 @@ export class Probabilities {
         shoe,
         isBlackjack
       );
-      const result = this.getOutcomeProbabilities(
-        outcomes,
-        this.getTotalProbabilities(probabilities)
-      );
+      const result = this.getDealerOutcomeCounts(outcomes, this.getTotalProbabilities(probabilities))
+
       allHandOutcomes.push(result);
       handProbs.push(prob);
     }
@@ -474,11 +468,7 @@ export class Probabilities {
       shoe,
       isBlackjack
     );
-    const result = this.getOutcomeProbabilities(
-      outcomes,
-      this.getTotalProbabilities(probabilities)
-    );
-
+    const result = this.getDealerOutcomeCounts(outcomes, this.getTotalProbabilities(probabilities))
     return { result, isBlackjack };
   }
 
@@ -687,7 +677,7 @@ export class Probabilities {
     cards: Card[],
     upCard: number,
     excludeCards?: Card[]
-  ) {
+  ): { winProb: number, tieProb: number, loseProb: number, DBJ: number } {
     const total = this.total(cards);
     let winProb = 0;
     let tieProb = 0;
@@ -697,7 +687,7 @@ export class Probabilities {
 
     if (total > 21) {
       loseProb = 1;
-      return this.calcStandEV(cards, { winProb, tieProb, loseProb, DBJ }, excludeCards);
+      return { winProb, tieProb, loseProb, DBJ };
     }
 
     const dealerProbs = this.runDealerSimGivenCards(
@@ -709,12 +699,8 @@ export class Probabilities {
     DBJ = dealerProbs.result[6];
 
     if (this.isBlackjack(cards, excludeCards)) {
-      winProb = 1;
-      if (this.dealerSettings.ENHC) {
-        tieProb = DBJ;
-        winProb = 1 - tieProb;
-      }
-      return this.calcStandEV(cards, { winProb, tieProb, loseProb, DBJ }, excludeCards);
+      winProb = 1 - DBJ; 
+      return { winProb, tieProb, loseProb, DBJ };
     }
 
     winProb += dealerProbs.result[outcome++] ?? 0;
@@ -727,10 +713,7 @@ export class Probabilities {
     while (total < outcome + 16 && outcome < 6) {
       loseProb += dealerProbs.result[outcome++] ?? 0;
     }
-    if (this.dealerSettings.ENHC) {
-      loseProb += dealerProbs.result[outcome] ?? 0;
-    }
-    return this.calcStandEV(cards, { winProb, tieProb, loseProb, DBJ }, excludeCards);
+    return { winProb, tieProb, loseProb, DBJ };
   }
 
   calcStandEV(
@@ -743,9 +726,17 @@ export class Probabilities {
     },
     excludeCards?: Card[]
   ) {
-    let BJPay = 1;
-    if (this.isBlackjack(hand, excludeCards)) BJPay = this.dealerSettings.BJPay;
-    return BJPay * (stand.winProb - stand.loseProb);
+    if (this.dealerSettings.ENHC) {
+      if (this.isBlackjack(hand, excludeCards)) {
+        return (1 - stand.DBJ)*this.dealerSettings.BJPay;
+      }
+      return stand.winProb - stand.loseProb - stand.DBJ;
+    }
+    if (this.isBlackjack(hand, excludeCards)) {
+      return this.dealerSettings.BJPay;
+    }
+    const sumAfterPeek = stand.winProb + stand.tieProb + stand.loseProb;
+    return (stand.winProb / sumAfterPeek) - (stand.loseProb / sumAfterPeek);
   }
 
   calcStandVariance(
@@ -758,16 +749,29 @@ export class Probabilities {
     },
     excludeCards?: Card[]
   ) {
-    return (
-      1 - stand.tieProb - (this.calcStandEV(hand, stand, excludeCards) ^ 2)
-    );
+    if (this.dealerSettings.ENHC) {
+      if (this.isBlackjack(hand, excludeCards)) {
+        return (this.dealerSettings.BJPay^2) * stand.DBJ * (1 - stand.DBJ);
+      }
+      return 1 - stand.tieProb - (this.calcStandEV(hand, stand, excludeCards)^2);
+    }
+    if (this.isBlackjack(hand, excludeCards)) {
+      return 0;
+    }
+    const sumAfterPeek = stand.winProb + stand.tieProb + stand.loseProb;
+    return 1 - (stand.tieProb / sumAfterPeek) - (this.calcStandEV(hand, stand, excludeCards)^2);
   }
 
   calcHit(
     cards: Card[],
     upCard: number,
     excludeCards?: Card[]
-  ) {
+  ): {
+      winProb: number;
+      tieProb: number;
+      loseProb: number;
+      DBJ: number;
+    } {
     let winProb = 0;
     let tieProb = 0;
     let loseProb = 0;
@@ -779,23 +783,34 @@ export class Probabilities {
     this.removeCardsFromShoe(shoe, [{ rank: upCard }]);
 
     let nextCardProbs = this.getNextCardProb(shoe, upCard);
-
-    let EV = 0;
     for (let nextRank = 1; nextRank <= 10; nextRank++) {
       if (shoe.filter((c) => c.rank === nextRank).length === 0) continue;
       const hand = [...cards, { rank: nextRank }];
 
-      let standEV;
+      let stand;
       if (excludeCards) {
-        standEV = this.calcStand(hand, upCard, excludeCards);
+        stand = this.calcStand(hand, upCard, excludeCards)
       } else {
-        standEV = this.getData(hand, upCard, this.standData);
+        stand = this.getData(hand, upCard, this.standData);
       }
-      const hitEV = this.calcHit(hand, upCard, excludeCards);
+
+      const standEV = this.calcStandEV(hand, stand, excludeCards);
+      const hit = this.calcHit(hand, upCard, excludeCards);
+      const hitEV = this.calcHitEV(hit);
       const maxEV = Math.max(hitEV, standEV);
-      EV += maxEV * nextCardProbs[nextRank - 1]
+      if (maxEV === standEV) {
+        winProb += stand.winProb * nextCardProbs[nextRank - 1];
+        tieProb += stand.tieProb * nextCardProbs[nextRank - 1];
+        loseProb += stand.loseProb * nextCardProbs[nextRank - 1];
+        DBJ += stand.DBJ * nextCardProbs[nextRank - 1];
+      } else if (maxEV === hitEV) {
+        winProb += hit.winProb * nextCardProbs[nextRank - 1];
+        tieProb += hit.tieProb * nextCardProbs[nextRank - 1];
+        loseProb += hit.loseProb * nextCardProbs[nextRank - 1];
+        DBJ += hit.DBJ * nextCardProbs[nextRank - 1];
+      }
     }
-    return EV;
+    return {winProb, tieProb, loseProb, DBJ};
   }
 
   calcHitEV(hit: {
@@ -804,7 +819,11 @@ export class Probabilities {
     loseProb: number;
     DBJ: number;
   }) {
-    return hit.winProb - hit.loseProb;
+    if (this.dealerSettings.ENHC) {
+      return hit.winProb - hit.loseProb - hit.DBJ;
+    }
+    const sumAfterPeek = hit.winProb + hit.tieProb + hit.loseProb;
+    return (hit.winProb / sumAfterPeek) - (hit.loseProb / sumAfterPeek);
   }
 
   calcHitVariance(hit: {
@@ -813,48 +832,84 @@ export class Probabilities {
     loseProb: number;
     DBJ: number;
   }) {
-    return 1 - hit.tieProb - (this.calcHitEV(hit) ^ 2);
+    if (this.dealerSettings.ENHC) {
+      return 1 - hit.tieProb - (this.calcHitEV(hit)^2);
+    }
+    const sumAfterPeek = hit.winProb + hit.tieProb + hit.loseProb;
+    return 1 - (hit.tieProb / sumAfterPeek) - (this.calcHitEV(hit)^2);
   }
 
-  calculateDoubleForHand(cards: Card[], upCard: number, excludeCards?: Card[]) {
-    let shoe = this.genShoe();
+  calcDouble(cards: Card[], upCard: number, excludeCards?: Card[]): {
+      winProb: number;
+      tieProb: number;
+      loseProb: number;
+      DBJ: number;
+    } {
+    let winProb = 0;
+    let tieProb = 0;
+    let loseProb = 0;
+    let DBJ = 0;
 
+    let shoe = this.genShoe();
     if (excludeCards) this.removeCardsFromShoe(shoe, excludeCards);
     this.removeCardsFromShoe(shoe, cards);
     this.removeCardsFromShoe(shoe, [{ rank: upCard }]);
 
     let nextCardProbs = this.getNextCardProb(shoe, upCard);
-
-    let hitEV = 0;
     for (let nextRank = 1; nextRank <= 10; nextRank++) {
       if (shoe.filter((c) => c.rank === nextRank).length === 0) continue;
+      const hand = [...cards, { rank: nextRank }];
 
-      let nextStand = 0;
+      let stand;
       if (excludeCards) {
-        nextStand = this.calcStand(
-          [...cards, { rank: nextRank }],
-          upCard,
-          excludeCards
-        );
+        stand = this.calcStand(hand, upCard, excludeCards)
       } else {
-        nextStand = this.getData(
-          [...cards, { rank: nextRank }],
-          upCard,
-          this.standData
-        );
+        stand = this.getData(hand, upCard, this.standData);
       }
 
-      hitEV += nextStand * nextCardProbs[nextRank - 1];
+      winProb += stand.winProb * nextCardProbs[nextRank - 1];
+      tieProb += stand.tieProb * nextCardProbs[nextRank - 1];
+      loseProb += stand.loseProb * nextCardProbs[nextRank - 1];
+      DBJ += stand.DBJ * nextCardProbs[nextRank - 1];
     }
-    return 2 * hitEV;
+    return {winProb, tieProb, loseProb, DBJ};
   }
 
-  calculateSplitForHand(cards: Card[], upCard: number, hands: number) {
-    if (cards.length != 2) return -99;
-    if (cards[0].rank != cards[1].rank) return -99;
-    if (hands > this.dealerSettings.splits + 1) return -99;
+  calcDoubleEV(double: {
+    winProb: number;
+    tieProb: number;
+    loseProb: number;
+    DBJ: number;
+  }) {
+    if (this.dealerSettings.ENHC) {
+      return 2*(double.winProb - double.loseProb - double.DBJ);
+    }
+    const sumAfterPeek = double.winProb + double.tieProb + double.loseProb;
+    return 2*((double.winProb / sumAfterPeek) - (double.loseProb / sumAfterPeek));
+  }
+
+  calcDoubleVariance(double: {
+    winProb: number;
+    tieProb: number;
+    loseProb: number;
+    DBJ: number;
+  }) {
+    if (this.dealerSettings.ENHC) {
+      return 4*(1 - double.tieProb) - (this.calcHitEV(double)^2);
+    }
+    const sumAfterPeek = double.winProb + double.tieProb + double.loseProb;
+    return 4*(1 - (double.tieProb / sumAfterPeek)) - (this.calcHitEV(double)^2);
+  }
+
+  calculateSplitForHand(cards: Card[], upCard: number, excludeCards?: Card[]) {
+    if (cards.length != 2) return NaN;
+    if (cards[0].rank != cards[1].rank) return NaN;
+
+    let hand1 = {noDouble: {winProb: 0, tieProb: 0, loseProb: 0, DBJ: 0 }, double: {winProb: 0, tieProb: 0, loseProb: 0, DBJ: 0 }}
+    let hand2 = {noDouble: {winProb: 0, tieProb: 0, loseProb: 0, DBJ: 0 }, double: {winProb: 0, tieProb: 0, loseProb: 0, DBJ: 0 }}
 
     let shoe = this.genShoe();
+    if (excludeCards) this.removeCardsFromShoe(shoe, excludeCards);
     this.removeCardsFromShoe(shoe, cards);
     this.removeCardsFromShoe(shoe, [{ rank: upCard }]);
 
@@ -864,13 +919,13 @@ export class Probabilities {
       if (nextCardProbs[nextRank - 1] === 0) continue;
       let EV = -99;
       if (cards[0].rank === 1 && !this.dealerSettings.drawAces) {
-        EV = this.calcStand([cards[0], { rank: nextRank }], upCard, [
+        EV = this.calcStandEV([cards[0], { rank: nextRank }], this.calcStand([cards[0], { rank: nextRank }], upCard, [
           cards[1],
-        ]);
+        ]), []);
       } else {
-        EV = this.getMaxHSD([cards[0], { rank: nextRank }], upCard, [
-          cards[1],
-        ]).EV;
+        // EV = this.getMaxHSD([cards[0], { rank: nextRank }], upCard, [
+        //   cards[1],
+        // ]).EV;
       }
       fullSplitEv += EV * nextCardProbs[nextRank - 1];
     }
@@ -981,36 +1036,6 @@ export class Probabilities {
   //   recurse(cards, shoe, 1);
   //   return { allHands, allProbs };
   // }
-
-  getMaxHSD(cards: Card[], upCard: number, excludeCards?: Card[]) {
-    let nextStand = 0;
-    if (excludeCards) {
-      nextStand = this.calcStand(cards, upCard, excludeCards);
-    } else {
-      nextStand = this.getData(cards, upCard, this.standData);
-    }
-
-    let nextHit = 0;
-    if (excludeCards) {
-      nextHit = this.calcHit(cards, upCard, excludeCards);
-    } else {
-      nextHit = this.getData(cards, upCard, this.hitData);
-    }
-
-    let nextDouble = null;
-    if (this.canDouble(cards) && this.dealerSettings.DAS) {
-      if (excludeCards) {
-        nextDouble = this.calculateDoubleForHand(cards, upCard, excludeCards);
-      } else {
-        nextDouble = this.getData(cards, upCard, this.doubleData);
-      }
-    }
-    const options = [nextStand, nextHit];
-    if (nextDouble !== null) options.push(nextDouble);
-    const EV = Math.max(...options);
-    const result = EV === nextStand ? "S" : EV === nextHit ? "H" : "D";
-    return { EV, result };
-  }
 
   getNextCardProb(shoe: Card[], upCard: number) {
     let nextCardProbs = [];
@@ -1195,17 +1220,6 @@ export class Probabilities {
       }
     }
     return totalProbs;
-  }
-
-  // Returns normalized probabilities of a dealer reaching a given dealer outcome, Bust, 17, 18, 19, 20, 21, BJ
-  getOutcomeProbabilities(outcomes: Card[][], probabilities: number[]) {
-    let counts = this.getDealerOutcomeCounts(outcomes, probabilities);
-    if (!this.dealerSettings.ENHC) {
-      const DBJ = counts[6];
-      counts = counts.slice(0, -1);
-      return [...this.normalize(counts), DBJ];
-    }
-    return [...this.normalize(counts)];
   }
 
   // Returns the counted dealer outcomes
