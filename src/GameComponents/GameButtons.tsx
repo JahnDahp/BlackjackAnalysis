@@ -15,7 +15,7 @@ interface Props {
   setShowStrategyErrorMessage: (val: boolean) => void;
   setShowDeviationErrorMessage: (val: boolean) => void;
   setCorrectChoice: (val: number) => void;
-  updateCounter: boolean;
+  setBlackjackGame: React.Dispatch<React.SetStateAction<BlackjackGame | null>>;
 }
 
 const GameButtons = ({
@@ -25,8 +25,13 @@ const GameButtons = ({
   setShowStrategyErrorMessage,
   setShowDeviationErrorMessage,
   setCorrectChoice,
+  setBlackjackGame,
 }: Props) => {
-  const [updateCounter, setUpdateCounter] = useState(false);
+  function refreshGame() {
+    setBlackjackGame((prev) =>
+      Object.assign(Object.create(Object.getPrototypeOf(prev!)), prev),
+    );
+  }
 
   function getCardsLeft() {
     let cardsLeft = blackjackGame?.shoe.size();
@@ -96,7 +101,7 @@ const GameButtons = ({
         bankrollSettingsObject={bankrollSettingsObject}
         setShowStrategyErrorMessage={setShowStrategyErrorMessage}
         setShowDeviationErrorMessage={setShowDeviationErrorMessage}
-        setUpdateCounter={setUpdateCounter}
+        setBlackjackGame={setBlackjackGame}
       />
       {blackjackGame?.showHit && (
         <Button
@@ -105,7 +110,7 @@ const GameButtons = ({
             showMessage(BlackjackGame.HIT);
             blackjackGame.choice = BlackjackGame.HIT;
             blackjackGame.playGame();
-            setUpdateCounter((prev) => !prev);
+            refreshGame();
           }}
           width="100px"
         />
@@ -117,7 +122,7 @@ const GameButtons = ({
             showMessage(BlackjackGame.STAND);
             blackjackGame.choice = BlackjackGame.STAND;
             blackjackGame.playGame();
-            setUpdateCounter((prev) => !prev);
+            refreshGame();
           }}
           width="100px"
         />
@@ -129,7 +134,7 @@ const GameButtons = ({
             showMessage(BlackjackGame.DOUBLE);
             blackjackGame.choice = BlackjackGame.DOUBLE;
             blackjackGame.playGame();
-            setUpdateCounter((prev) => !prev);
+            refreshGame();
           }}
           width="100px"
         />
@@ -141,7 +146,7 @@ const GameButtons = ({
             showMessage(BlackjackGame.SPLIT);
             blackjackGame.choice = BlackjackGame.SPLIT;
             blackjackGame.playGame();
-            setUpdateCounter((prev) => !prev);
+            refreshGame();
           }}
           width="100px"
         />
@@ -153,7 +158,7 @@ const GameButtons = ({
             showMessage(BlackjackGame.SURRENDER);
             blackjackGame.choice = BlackjackGame.SURRENDER;
             blackjackGame.playGame();
-            setUpdateCounter((prev) => !prev);
+            refreshGame();
           }}
           width="100px"
         />
@@ -165,7 +170,7 @@ const GameButtons = ({
             onClick={() => {
               blackjackGame.choice = BlackjackGame.INSURANCE;
               blackjackGame.playGame();
-              setUpdateCounter((prev) => !prev);
+              refreshGame();
             }}
             width="100px"
           />
@@ -174,7 +179,7 @@ const GameButtons = ({
             onClick={() => {
               blackjackGame.choice = BlackjackGame.NO_INSURANCE;
               blackjackGame.playGame();
-              setUpdateCounter((prev) => !prev);
+              refreshGame();
             }}
             width="100px"
           />

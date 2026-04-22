@@ -109,14 +109,14 @@ const GameSettings = ({
         value === "1 deck"
           ? 1
           : value === "2 decks"
-          ? 2
-          : value === "4 decks"
-          ? 4
-          : value === "6 decks"
-          ? 6
-          : value === "8 decks"
-          ? 8
-          : parseFloat(value);
+            ? 2
+            : value === "4 decks"
+              ? 4
+              : value === "6 decks"
+                ? 6
+                : value === "8 decks"
+                  ? 8
+                  : parseFloat(value);
     } else if (key == "splits") {
       parsedValue = parseInt(value) - 1;
     } else if (["S17", "DAS", "RSA", "drawAces"].includes(key)) {
@@ -126,12 +126,12 @@ const GameSettings = ({
         value === "3:2"
           ? 1.5
           : value === "6:5"
-          ? 1.2
-          : value === "2:1"
-          ? 2
-          : value === "1:1"
-          ? 1
-          : parseFloat(value);
+            ? 1.2
+            : value === "2:1"
+              ? 2
+              : value === "1:1"
+                ? 1
+                : parseFloat(value);
     } else if (key === "doubles") {
       switch (value) {
         case "8, 9, 10, 11":
@@ -213,7 +213,7 @@ const GameSettings = ({
                     const currentPen = gameSettingValues.pen;
                     const clampedPen = Math.min(
                       Math.max(currentPen, minPen),
-                      maxPen
+                      maxPen,
                     );
                     gameUpdateSetting({
                       decks: newDecks,

@@ -7,7 +7,7 @@ interface Props {
   updateCounter: boolean;
 }
 
-const GameHands = ({ blackjackGame }: Props) => {
+const GameHands = ({ blackjackGame, updateCounter }: Props) => {
   const handCount = blackjackGame?.hands.length ?? 0;
   const handWidth = 100;
   const handHeight = 120;
@@ -19,7 +19,7 @@ const GameHands = ({ blackjackGame }: Props) => {
     numCards: number,
     cardSpacing: number,
     handWidth: number,
-    scale: number
+    scale: number,
   ): string {
     const totalCardSpread = (numCards - 1) * cardSpacing;
     const centerOffsetX = totalCardSpread / 2 + handWidth / 2;
@@ -37,6 +37,7 @@ const GameHands = ({ blackjackGame }: Props) => {
   return (
     <div
       className="game-hands"
+      key={`hands-${updateCounter}`}
       style={{
         gap: `${handCount <= 4 ? 150 : 100 * scale}px`,
       }}
@@ -62,7 +63,7 @@ const GameHands = ({ blackjackGame }: Props) => {
                       hand.cards.length,
                       cardSpacing,
                       handWidth,
-                      scale
+                      scale,
                     ),
                   }}
                 >

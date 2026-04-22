@@ -2,7 +2,7 @@ import "../PlayStyles/SettingsBody.css";
 import "../CalculatorStyles/CalculatorSettingsBody.css";
 import { DealerSettingsObject, Setting } from "../SettingsObjects";
 import Dropdown from "../PlayComponents/Dropdown";
-import { Probabilities } from "./Dealer";
+import { CalculatorLogic } from "./CalculatorLogic";
 import { useEffect, useState } from "react";
 import Button from "../GameComponents/Button";
 import OddTableCell from "./OddTableCell";
@@ -37,11 +37,11 @@ const CumulativeSettings = ({
   const [doubleProbs, setDoubleProbs] = useState<any>(null);
   const [splitProbs, setSplitProbs] = useState<any>(null);
   const [dealerProbabilities, setDealerProbabilities] =
-    useState<Probabilities | null>(null);
+    useState<CalculatorLogic | null>(null);
 
   useEffect(() => {
     async function loadProbabilities() {
-      const prob = await Probabilities.create(dealerSettingValues);
+      const prob = await CalculatorLogic.create(dealerSettingValues);
       setDealerProbabilities(prob);
     }
     loadProbabilities();
@@ -77,7 +77,6 @@ const CumulativeSettings = ({
     "ENHC",
     "DAS",
     "doubles",
-    "splits",
     "LS",
     "BJPay",
     "RSA",
@@ -183,21 +182,6 @@ const CumulativeSettings = ({
             return "Any total";
         }
         return options[0];
-      case "splits":
-        switch (value) {
-          case 0:
-            return "1 hands";
-          case 1:
-            return "2 hands";
-          case 3:
-            return "4 hands";
-          case 5:
-            return "6 hands";
-          case 7:
-            return "8 hands";
-          default:
-            return String(value);
-        }
       case "LS":
       case "RSA":
       case "drawAces":
@@ -229,12 +213,12 @@ const CumulativeSettings = ({
         value === "1 deck"
           ? 1
           : value === "2 decks"
-          ? 2
-          : value === "4 decks"
-          ? 4
-          : value === "6 decks"
-          ? 6
-          : 8;
+            ? 2
+            : value === "4 decks"
+              ? 4
+              : value === "6 decks"
+                ? 6
+                : 8;
     } else if (key === "S17") {
       parsedValue = value === "Stay soft 17";
     } else if (
@@ -270,18 +254,19 @@ const CumulativeSettings = ({
         value === "3:2"
           ? 1.5
           : value === "6:5"
-          ? 1.2
-          : value === "2:1"
-          ? 2
-          : value === "1:1"
-          ? 1
-          : parseFloat(value);
+            ? 1.2
+            : value === "2:1"
+              ? 2
+              : value === "1:1"
+                ? 1
+                : parseFloat(value);
     }
     return parsedValue;
   };
 
   const runSimulation = async () => {
-    const sim = await Probabilities.create(dealerSettingValues);
+    const sim = await CalculatorLogic.create(dealerSettingValues);
+    // sim.runSims();
     setDealerProbabilities(sim);
     setDealerProbs(sim.getDealerData());
     setStandProbs(sim.getCumulativeProbs("stand"));
@@ -344,7 +329,7 @@ const CumulativeSettings = ({
                     <OddTableCell
                       key={`${outIndex}-${upIndex}`}
                       value={String(
-                        getPercent(dealerProbs[upIndex][outIndex], 4)
+                        getPercent(dealerProbs[upIndex][outIndex], 4),
                       )}
                     />
                   ))}
@@ -368,7 +353,7 @@ const CumulativeSettings = ({
                   <OddTableCell
                     key={`${outIndex}-${upIndex}`}
                     value={String(
-                      getPercent(standProbs?.hard[upIndex][outIndex] ?? 0, 4)
+                      getPercent(standProbs?.hard[upIndex][outIndex] ?? 0, 4),
                     )}
                   />
                 ))}
@@ -391,7 +376,7 @@ const CumulativeSettings = ({
                   <OddTableCell
                     key={`${outIndex}-${upIndex}`}
                     value={String(
-                      getPercent(standProbs?.soft[upIndex][outIndex] ?? 0, 4)
+                      getPercent(standProbs?.soft[upIndex][outIndex] ?? 0, 4),
                     )}
                   />
                 ))}
@@ -414,7 +399,7 @@ const CumulativeSettings = ({
                   <OddTableCell
                     key={`${outIndex}-${upIndex}`}
                     value={String(
-                      getPercent(hitProbs?.hard[upIndex][outIndex] ?? 0, 4)
+                      getPercent(hitProbs?.hard[upIndex][outIndex] ?? 0, 4),
                     )}
                   />
                 ))}
@@ -437,7 +422,7 @@ const CumulativeSettings = ({
                   <OddTableCell
                     key={`${outIndex}-${upIndex}`}
                     value={String(
-                      getPercent(hitProbs?.soft[upIndex][outIndex] ?? 0, 4)
+                      getPercent(hitProbs?.soft[upIndex][outIndex] ?? 0, 4),
                     )}
                   />
                 ))}
@@ -460,7 +445,7 @@ const CumulativeSettings = ({
                   <OddTableCell
                     key={`${outIndex}-${upIndex}`}
                     value={String(
-                      getPercent(doubleProbs?.hard[upIndex][outIndex] ?? 0, 4)
+                      getPercent(doubleProbs?.hard[upIndex][outIndex] ?? 0, 4),
                     )}
                   />
                 ))}
@@ -483,7 +468,7 @@ const CumulativeSettings = ({
                   <OddTableCell
                     key={`${outIndex}-${upIndex}`}
                     value={String(
-                      getPercent(doubleProbs?.soft[upIndex][outIndex] ?? 0, 4)
+                      getPercent(doubleProbs?.soft[upIndex][outIndex] ?? 0, 4),
                     )}
                   />
                 ))}

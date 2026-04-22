@@ -39,10 +39,6 @@ const Calculator = ({
       label: "Player may double on",
       options: ["8, 9, 10, 11", "9, 10, 11", "10, 11", "Any total"],
     },
-    {
-      label: "Player can split to",
-      options: ["0 hands", "2 hands", "4 hands", "6 hands", "8 hands"],
-    },
     { label: "Late surrender allowed", options: ["Yes", "No"] },
     { label: "Blackjack pays", options: ["3:2", "6:5", "2:1", "1:1"] },
     { label: "Player can resplit aces", options: ["Yes", "No"] },
