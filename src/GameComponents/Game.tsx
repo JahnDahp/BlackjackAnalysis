@@ -32,7 +32,7 @@ const Game = ({
     useState(false);
   const [correctChoice, setCorrectChoice] = useState(-1);
   const [blackjackGame, setBlackjackGame] = useState<BlackjackGame | null>(
-    null
+    null,
   );
 
   const started = useRef(false);
@@ -44,7 +44,7 @@ const Game = ({
       gameSettingsObject,
       strategySettingsObject,
       countingSettingsObject,
-      bankrollSettingsObject.bankroll
+      bankrollSettingsObject.bankroll,
     );
     game.playGame();
     setBlackjackGame(game);
@@ -72,7 +72,7 @@ const Game = ({
         setShowStrategyErrorMessage={setShowStrategyErrorMessage}
         setShowDeviationErrorMessage={setShowDeviationErrorMessage}
         setCorrectChoice={setCorrectChoice}
-        updateCounter={updateCounter}
+        setBlackjackGame={setBlackjackGame}
       />
     </div>
   );

@@ -10,7 +10,7 @@ interface Props {
   bankrollSettingsObject: BankrollSettingsObject;
   setShowStrategyErrorMessage: (val: boolean) => void;
   setShowDeviationErrorMessage: (val: boolean) => void;
-  setUpdateCounter: React.Dispatch<React.SetStateAction<boolean>>;
+  setBlackjackGame: React.Dispatch<React.SetStateAction<BlackjackGame | null>>;
 }
 
 const HandOver = ({
@@ -18,9 +18,15 @@ const HandOver = ({
   bankrollSettingsObject,
   setShowStrategyErrorMessage,
   setShowDeviationErrorMessage,
-  setUpdateCounter,
+  setBlackjackGame,
 }: Props) => {
   const [betInput, setBetInput] = useState("");
+
+  function refreshGame() {
+    setBlackjackGame((prev) =>
+      Object.assign(Object.create(Object.getPrototypeOf(prev!)), prev),
+    );
+  }
 
   function clampBetValue(raw: string): string {
     let bet = parseFloat(raw);
@@ -60,7 +66,7 @@ const HandOver = ({
                   blackjackGame.playGame();
                   setShowStrategyErrorMessage(false);
                   setShowDeviationErrorMessage(false);
-                  setUpdateCounter((prev) => !prev);
+                  refreshGame();
                 }}
                 width="100px"
               />

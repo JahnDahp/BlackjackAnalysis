@@ -2,7 +2,7 @@ import "../PlayStyles/SettingsBody.css";
 import "../CalculatorStyles/CalculatorSettingsBody.css";
 import { DealerSettingsObject, Setting } from "../SettingsObjects";
 import Dropdown from "../PlayComponents/Dropdown";
-import { Probabilities } from "./Dealer";
+import { CalculatorLogic } from "./CalculatorLogic";
 import React, { useEffect, useState } from "react";
 import Button from "../GameComponents/Button";
 import PlayingCard from "../GameComponents/PlayingCard";
@@ -41,11 +41,11 @@ const HandSettings = ({
   const [doubleData, setDoubleData] = useState<any>(null);
   const [splitData, setSplitData] = useState<any>(null);
   const [dealerProbabilities, setDealerProbabilities] =
-    useState<Probabilities | null>(null);
+    useState<CalculatorLogic | null>(null);
 
   useEffect(() => {
     async function loadProbabilities() {
-      const prob = await Probabilities.create(dealerSettingValues);
+      const prob = await CalculatorLogic.create(dealerSettingValues);
       setDealerProbabilities(prob);
     }
     loadProbabilities();
@@ -169,12 +169,12 @@ const HandSettings = ({
         value === "1 deck"
           ? 1
           : value === "2 decks"
-          ? 2
-          : value === "4 decks"
-          ? 4
-          : value === "6 decks"
-          ? 6
-          : 8;
+            ? 2
+            : value === "4 decks"
+              ? 4
+              : value === "6 decks"
+                ? 6
+                : 8;
     } else if (key === "S17") {
       parsedValue = value === "Stay soft 17";
     } else if (
@@ -210,12 +210,12 @@ const HandSettings = ({
         value === "3:2"
           ? 1.5
           : value === "6:5"
-          ? 1.2
-          : value === "2:1"
-          ? 2
-          : value === "1:1"
-          ? 1
-          : parseFloat(value);
+            ? 1.2
+            : value === "2:1"
+              ? 2
+              : value === "1:1"
+                ? 1
+                : parseFloat(value);
     }
     return parsedValue;
   };
@@ -234,42 +234,47 @@ const HandSettings = ({
     return false;
   };
 
-  const getBestEV = (upCardResults: number[]) => {
-    const max = Math.max(...upCardResults);
-    return max === upCardResults[0]
+  const getBestEV = (upCardResults: (number | string)[]) => {
+    const numbers = upCardResults.filter(
+      (v): v is number => typeof v === "number",
+    );
+    const max = Math.max(...numbers);
+    return max === numbers[0]
       ? "Stand"
-      : max === upCardResults[1]
-      ? "Hit"
-      : max === upCardResults[2]
-      ? "Double"
-      : max === upCardResults[3]
-      ? "Split"
-      : "Surr";
+      : max === numbers[1]
+        ? "Hit"
+        : max === numbers[2]
+          ? "Double"
+          : max === numbers[3]
+            ? "Split"
+            : "Surr";
   };
 
   const getTableValues = async () => {
-    const sim = await Probabilities.create(dealerSettingValues);
+    const sim = await CalculatorLogic.create(dealerSettingValues);
     setDealerProbabilities(sim);
 
     if (!sim) return null;
     const table = [];
     for (let i = 2; i <= 11; i++) {
       const upCard = i === 11 ? 1 : i;
-      let upCardResults = [];
-      if (sim.getSplitData(hand, upCard) !== -100) {
+      let upCardResults: (number | string)[] = [];
+      const isPair = hand.length === 2 && hand[0].rank === hand[1].rank;
+      if (isPair) {
+        const splitEV = sim.calcSplitEV(sim.getData(hand, upCard, splitData));
         upCardResults = [
-          sim.getData(hand, upCard, standData),
-          sim.getData(hand, upCard, hitData),
-          sim.getData(hand, upCard, doubleData),
-          sim.getSplitData(hand, upCard),
+          sim.calcStandEV(hand, sim.getData(hand, upCard, standData)),
+          sim.calcHitEV(sim.getData(hand, upCard, hitData)),
+          sim.calcDoubleEV(sim.getData(hand, upCard, doubleData)),
+          splitEV,
           -0.5,
         ];
         setChoiceLabels(["Stand", "Hit", "Double", "Split", "Surr", "Best"]);
       } else {
         upCardResults = [
-          sim.getData(hand, upCard, standData),
-          sim.getData(hand, upCard, hitData),
-          sim.getData(hand, upCard, doubleData),
+          sim.calcStandEV(hand, sim.getData(hand, upCard, standData)),
+          sim.calcHitEV(sim.getData(hand, upCard, hitData)),
+          sim.calcDoubleEV(sim.getData(hand, upCard, doubleData)),
           -0.5,
         ];
         setChoiceLabels(["Stand", "Hit", "Double", "Surr", "Best"]);

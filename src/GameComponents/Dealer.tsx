@@ -8,7 +8,7 @@ interface Props {
   updateCounter: boolean;
 }
 
-const Dealer = ({ blackjackGame }: Props) => {
+const Dealer = ({ blackjackGame, updateCounter }: Props) => {
   const handHeight = 120;
   const dealerCardSpacing = 120 * 0.8;
   const dealerCards = [...(blackjackGame?.dealer.cards || [])];
@@ -18,8 +18,8 @@ const Dealer = ({ blackjackGame }: Props) => {
 
   return (
     <div
-      key={"dealer"}
       className="game-dealer"
+      key={`dealer-${updateCounter}`}
       style={{
         width: `${dealerHandWidth}px`,
         height: `${handHeight * 0.8}px`,
