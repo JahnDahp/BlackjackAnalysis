@@ -126,10 +126,11 @@ export class CalculatorLogicBase {
     cards: Card[],
     dealerUpcard: number,
     excludeCards?: Card[],
+    split?: boolean,
   ) {
     let shoe = this.genShoe();
     const isBlackjack =
-      this.total(cards) === 21 && cards.length === 2 && !excludeCards;
+      this.total(cards) === 21 && cards.length === 2 && !excludeCards && !split;
     let prob = 1;
 
     if (excludeCards) this.removeCardsFromShoe(shoe, excludeCards);
@@ -150,7 +151,7 @@ export class CalculatorLogicBase {
       outcomes,
       this.getTotalProbabilities(probabilities),
     );
-    return { result, isBlackjack };
+    return result;
   }
 
   /**
@@ -375,17 +376,20 @@ export class CalculatorLogicBase {
    */
   getSplitProbs() {
     const splits = [];
-    let dataSet = this.getDataSet((this.splitData as any).EV);
+    const dasKey = this.dealerSettings.DAS ? "DAS" : "nDAS";
+    const dataSet = this.getDataSet((this.splitData as any).probs)[dasKey];
+
     for (let upCard = 1; upCard <= 10; upCard++) {
       const upcardResults = [];
-      for (let totalTarget = 1; totalTarget <= 10; totalTarget++) {
+      for (let pairVal = 1; pairVal <= 10; pairVal++) {
         let EV = -99;
         const handIndex = this.getHandIndex(
-          [{ rank: totalTarget }, { rank: totalTarget }],
+          [{ rank: pairVal }, { rank: pairVal }],
           dataSet[upCard - 1],
         );
         if (handIndex !== -1) {
-          EV = dataSet[upCard - 1][handIndex][1];
+          const splitResult = dataSet[upCard - 1][handIndex][1];
+          EV = this.calcSplitEV(splitResult);
         }
         upcardResults.push(EV);
       }
@@ -415,6 +419,7 @@ export class CalculatorLogicBase {
     cards: Card[],
     upCard: number,
     excludeCards?: Card[],
+    split?: boolean,
   ): { winProb: number; tieProb: number; loseProb: number; DBJ: number } {
     const cardTotal = this.total(cards);
     let winProb = 0;
@@ -432,24 +437,25 @@ export class CalculatorLogicBase {
       cards,
       upCard,
       excludeCards,
+      split,
     );
 
-    DBJ = this.dealerSettings.ENHC ? dealerProbs.result[6] : 0;
+    DBJ = this.dealerSettings.ENHC ? dealerProbs[6] : 0;
 
     if (this.isBlackjack(cards, excludeCards)) {
       winProb = 1 - DBJ;
       return { winProb, tieProb, loseProb, DBJ };
     }
 
-    winProb += dealerProbs.result[outcome++] ?? 0;
+    winProb += dealerProbs[outcome++] ?? 0;
     while (cardTotal > outcome + 16 && outcome < 6) {
-      winProb += dealerProbs.result[outcome++] ?? 0;
+      winProb += dealerProbs[outcome++] ?? 0;
     }
     if (cardTotal === outcome + 16 && outcome < 6) {
-      tieProb = dealerProbs.result[outcome++] ?? 0;
+      tieProb = dealerProbs[outcome++] ?? 0;
     }
     while (cardTotal < outcome + 16 && outcome < 6) {
-      loseProb += dealerProbs.result[outcome++] ?? 0;
+      loseProb += dealerProbs[outcome++] ?? 0;
     }
 
     const total = winProb + tieProb + loseProb + DBJ;
@@ -477,8 +483,9 @@ export class CalculatorLogicBase {
       DBJ: number;
     },
     excludeCards?: Card[],
+    split?: boolean,
   ) {
-    if (this.isBlackjack(hand, excludeCards)) {
+    if (this.isBlackjack(hand, excludeCards) && !split) {
       return (1 - stand.DBJ) * this.dealerSettings.BJPay;
     }
     return stand.winProb - stand.loseProb - stand.DBJ;
@@ -698,6 +705,7 @@ export class CalculatorLogicBase {
   calcSplit(
     cards: Card[],
     upCard: number,
+    removePairCard?: boolean,
     excludeCards?: Card[],
   ): {
     noDouble: {
@@ -729,10 +737,13 @@ export class CalculatorLogicBase {
       if (nextCardProbs[nextRank - 1] === 0) continue;
       const hand = [cards[0], { rank: nextRank }];
 
-      const stand = this.calcStand(hand, upCard, [
-        cards[1],
-        ...(excludeCards ?? []),
-      ]);
+      const stand = this.calcStand(
+        hand,
+        upCard,
+        excludeCards
+          ? [...excludeCards, ...(removePairCard ? [cards[0]] : [])]
+          : [...(removePairCard ? [cards[0]] : [])],
+      );
 
       if (cards[0].rank === 1 && !this.dealerSettings.drawAces) {
         handProbs.noDouble.winProb +=
@@ -743,21 +754,30 @@ export class CalculatorLogicBase {
           stand.loseProb * nextCardProbs[nextRank - 1];
         handProbs.noDouble.DBJ += stand.DBJ * nextCardProbs[nextRank - 1];
       } else {
-        const hit = this.calcHit(hand, upCard, [
-          cards[1],
-          ...(excludeCards ?? []),
-        ]);
-        const double = this.calcDouble(hand, upCard, [
-          cards[1],
-          ...(excludeCards ?? []),
-        ]);
+        const hit = this.calcHit(
+          hand,
+          upCard,
+          excludeCards
+            ? [...excludeCards, ...(removePairCard ? [cards[0]] : [])]
+            : [...(removePairCard ? [cards[0]] : [])],
+        );
+        const double = this.calcDouble(
+          hand,
+          upCard,
+          excludeCards
+            ? [...excludeCards, ...(removePairCard ? [cards[0]] : [])]
+            : [...(removePairCard ? [cards[0]] : [])],
+        );
 
         const hitEV = this.calcHitEV(hit);
         const doubleEV = this.calcDoubleEV(double);
-        const standEV = this.calcStandEV(hand, stand, [
-          cards[1],
-          ...(excludeCards ?? []),
-        ]);
+        const standEV = this.calcStandEV(
+          hand,
+          stand,
+          excludeCards
+            ? [...excludeCards, ...(removePairCard ? [cards[0]] : [])]
+            : [...(removePairCard ? [cards[0]] : [])],
+        );
 
         let maxEV = 0;
         if (this.canDouble(hand) && this.dealerSettings.DAS)
@@ -950,10 +970,7 @@ export class CalculatorLogicBase {
    * configured list of allowed double totals.
    */
   canDouble(cards: Card[]) {
-    return (
-      cards.length === 2 &&
-      this.dealerSettings.doubles.includes(this.total(cards))
-    );
+    return cards.length === 2;
   }
 
   /**

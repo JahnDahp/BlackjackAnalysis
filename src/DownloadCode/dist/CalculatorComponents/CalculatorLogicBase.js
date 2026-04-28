@@ -538,10 +538,7 @@ export class CalculatorLogicBase {
             if (nextCardProbs[nextRank - 1] === 0)
                 continue;
             const hand = [cards[0], { rank: nextRank }];
-            const stand = this.calcStand(hand, upCard, [
-                cards[1],
-                ...(excludeCards ?? []),
-            ]);
+            const stand = this.calcStand(hand, upCard);
             if (cards[0].rank === 1 && !this.dealerSettings.drawAces) {
                 handProbs.noDouble.winProb +=
                     stand.winProb * nextCardProbs[nextRank - 1];
@@ -552,20 +549,11 @@ export class CalculatorLogicBase {
                 handProbs.noDouble.DBJ += stand.DBJ * nextCardProbs[nextRank - 1];
             }
             else {
-                const hit = this.calcHit(hand, upCard, [
-                    cards[1],
-                    ...(excludeCards ?? []),
-                ]);
-                const double = this.calcDouble(hand, upCard, [
-                    cards[1],
-                    ...(excludeCards ?? []),
-                ]);
+                const hit = this.calcHit(hand, upCard);
+                const double = this.calcDouble(hand, upCard);
                 const hitEV = this.calcHitEV(hit);
                 const doubleEV = this.calcDoubleEV(double);
-                const standEV = this.calcStandEV(hand, stand, [
-                    cards[1],
-                    ...(excludeCards ?? []),
-                ]);
+                const standEV = this.calcStandEV(hand, stand);
                 let maxEV = 0;
                 if (this.canDouble(hand) && this.dealerSettings.DAS)
                     maxEV = Math.max(standEV, hitEV, doubleEV);

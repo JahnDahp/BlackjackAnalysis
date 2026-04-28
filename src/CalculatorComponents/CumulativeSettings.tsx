@@ -6,6 +6,7 @@ import { CalculatorLogic } from "./CalculatorLogic";
 import { useEffect, useState } from "react";
 import Button from "../GameComponents/Button";
 import OddTableCell from "./OddTableCell";
+import { Simulator } from "../SimulatorComponents/Simulator";
 
 function getPercent(value: number | null, baseDecimals: number): string {
   if (value === null || value === undefined) return "";
@@ -71,17 +72,7 @@ const CumulativeSettings = ({
   if (!doubleData) return <div className="settings-body">Loading...</div>;
   if (!splitData) return <div className="settings-body">Loading...</div>;
 
-  const keyMap = [
-    "decks",
-    "S17",
-    "ENHC",
-    "DAS",
-    "doubles",
-    "LS",
-    "BJPay",
-    "RSA",
-    "drawAces",
-  ] as const;
+  const keyMap = ["decks", "S17", "ENHC", "DAS", "BJPay", "drawAces"] as const;
   const upCardLabels = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
   const outcomeLabels = ["Bust", "17", "18", "19", "20", "21", "BJ"];
   const hardHandLabels = [
@@ -169,21 +160,6 @@ const CumulativeSettings = ({
         }
       case "S17":
         return value ? "Stay soft 17" : "Hit soft 17";
-      case "doubles":
-        if (Array.isArray(value)) {
-          const str = value.join(", ");
-          if (str === "8, 9, 10, 11") return "8, 9, 10, 11";
-          if (str === "9, 10, 11") return "9, 10, 11";
-          if (str === "10, 11") return "10, 11";
-          if (
-            str ===
-            "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21"
-          )
-            return "Any total";
-        }
-        return options[0];
-      case "LS":
-      case "RSA":
       case "drawAces":
       case "ENHC":
       case "DAS":
@@ -265,14 +241,16 @@ const CumulativeSettings = ({
   };
 
   const runSimulation = async () => {
-    const sim = await CalculatorLogic.create(dealerSettingValues);
+    // const sim = await CalculatorLogic.create(dealerSettingValues);
     // sim.runSims();
-    setDealerProbabilities(sim);
-    setDealerProbs(sim.getDealerData());
-    setStandProbs(sim.getCumulativeProbs("stand"));
-    setHitProbs(sim.getCumulativeProbs("hit"));
-    setDoubleProbs(sim.getCumulativeProbs("double"));
-    setSplitProbs(sim.getSplitProbs());
+    // setDealerProbabilities(sim);
+    // setDealerProbs(sim.getDealerData());
+    // setStandProbs(sim.getCumulativeProbs("stand"));
+    // setHitProbs(sim.getCumulativeProbs("hit"));
+    // setDoubleProbs(sim.getCumulativeProbs("double"));
+    // setSplitProbs(sim.getSplitProbs());
+    const sim = await Simulator.create(dealerSettingValues);
+    sim.calcHSD();
   };
 
   return (

@@ -47,10 +47,6 @@ export interface DealerSettingsObject {
   S17: boolean;
   ENHC: boolean;
   DAS: boolean;
-  doubles: number[];
-  splits: number;
-  LS: boolean;
   BJPay: number;
-  RSA: boolean;
   drawAces: boolean;
 }

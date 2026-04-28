@@ -76,18 +76,7 @@ const HandSettings = ({
   if (!splitData) return <div className="settings-body">Loading...</div>;
 
   const upCardLabels = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "A"];
-  const keyMap = [
-    "decks",
-    "S17",
-    "ENHC",
-    "DAS",
-    "doubles",
-    "splits",
-    "LS",
-    "BJPay",
-    "RSA",
-    "drawAces",
-  ] as const;
+  const keyMap = ["decks", "S17", "ENHC", "DAS", "BJPay", "drawAces"] as const;
 
   const getInitialValue = (index: number, options: string[]): string => {
     const key = keyMap[index];
@@ -110,36 +99,6 @@ const HandSettings = ({
         }
       case "S17":
         return value ? "Stay soft 17" : "Hit soft 17";
-      case "doubles":
-        if (Array.isArray(value)) {
-          const str = value.join(", ");
-          if (str === "8, 9, 10, 11") return "8, 9, 10, 11";
-          if (str === "9, 10, 11") return "9, 10, 11";
-          if (str === "10, 11") return "10, 11";
-          if (
-            str ===
-            "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21"
-          )
-            return "Any total";
-        }
-        return options[0];
-      case "splits":
-        switch (value) {
-          case 0:
-            return "1 hands";
-          case 1:
-            return "2 hands";
-          case 3:
-            return "4 hands";
-          case 5:
-            return "6 hands";
-          case 7:
-            return "8 hands";
-          default:
-            return String(value);
-        }
-      case "LS":
-      case "RSA":
       case "drawAces":
       case "ENHC":
       case "DAS":

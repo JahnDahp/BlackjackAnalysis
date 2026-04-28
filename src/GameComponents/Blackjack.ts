@@ -4,7 +4,7 @@ import {
   StrategySettingsObject,
 } from "../SettingsObjects";
 
-function shuffle<T>(array: T[]): T[] {
+function shuffle(array: Card[]): Card[] {
   const result = [...array];
   for (let i = result.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -291,7 +291,7 @@ export class BlackjackGame {
     rules: GameSettingsObject,
     strategy: StrategySettingsObject,
     countSystem: CountingSettingsObject,
-    bankroll: number
+    bankroll: number,
   ) {
     let temp = new Card(0, "spades");
     this.strategy = strategy;
