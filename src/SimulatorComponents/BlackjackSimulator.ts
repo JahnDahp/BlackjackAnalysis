@@ -333,8 +333,7 @@ export class BlackjackSimulator {
 
   getNextChoice() {
     if (this.hardChoices.length === 0 || this.softChoices.length === 0) {
-      this.currentHand++;
-      return;
+      return BlackjackSimulator.STAND;
     }
 
     if (this.currentHand >= this.hands.length) return -1;
