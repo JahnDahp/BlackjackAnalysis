@@ -1,7 +1,0 @@
-.calculator-settings-body-table {
-  margin-top: 20px;
-  display: grid;
-  grid-template-columns: repeat(11, 1fr);
-  width: 100%;
-  text-align: center;
-}

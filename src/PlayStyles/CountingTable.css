@@ -1,9 +1,0 @@
-.counting-table {
-  display: flex;
-  flex-direction: column;
-}
-
-.counting-table-row {
-  display: flex;
-  flex-direction: row;
-}
