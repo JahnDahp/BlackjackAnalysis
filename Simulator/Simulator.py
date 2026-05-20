@@ -12,6 +12,10 @@ import pandas as pd
 
 from BlackjackSimulator import BlackjackSimulator, DealerSettingsObject
 
+MIN_CELL_ITERS = 1   # floor: always run at least this many iterations
+MAX_CELL_ITERS = 1_000_000  # cap: beyond this the decision margin is negligible
+MULTIPLIER = 1
+
 # ---------------------------------------------------------------------------
 # Inline iteration calculator (mirrors CalcIterations.py logic)
 # ---------------------------------------------------------------------------
@@ -131,12 +135,9 @@ def _calc_and_save_iterations(
         w_var+=sum((ev_fn(e[2],uc_idx)-w_ev)**2*e[1] for e in entries)/tp
         return w_ev,w_var
 
-    MIN_CELL_ITERS = 100_000    # floor: always run at least this many iterations
-    MAX_CELL_ITERS = 5_000_000  # cap: beyond this the decision margin is negligible
-
     def _req_n(v1,v2,delta):
         if delta<=1e-10: return MIN_CELL_ITERS
-        n = math.ceil(z**2*(v1+v2)/delta**2 * 2)
+        n = math.ceil(z**2*(v1+v2)/delta**2 * MULTIPLIER)
         return max(MIN_CELL_ITERS, min(n, MAX_CELL_ITERS))
 
     def _group(ds_upcard, two_card_only=False):
