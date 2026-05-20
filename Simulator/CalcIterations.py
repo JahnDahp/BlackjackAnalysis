@@ -10,8 +10,8 @@ will require fewer iterations. Outputs four CSVs into the Simulator folder:
   Pairs_DAS_Iterations.csv, Pairs_NDAS_Iterations.csv
 
 Usage:
-    python CalcIterations.py --data-dir ../data
-    python CalcIterations.py --data-dir ../data --confidence 0.99
+    python CalcIterations.py --data-dir ../Data
+    python CalcIterations.py --data-dir ../Data --confidence 0.99
 """
 
 from __future__ import annotations
@@ -273,7 +273,7 @@ def main() -> None:
         )
     )
     parser.add_argument("--data-dir",   dest="data_dir", default=None,
-                        help="Path to JSON data directory (default: ../data relative to this script)")
+                        help="Path to JSON data directory (default: ../Data relative to this script)")
     parser.add_argument("--out-dir",    dest="out_dir",  default=None,
                         help="Output directory (default: same folder as this script)")
     parser.add_argument("--confidence", type=float, default=CONFIDENCE)
@@ -306,7 +306,7 @@ def main() -> None:
     out_dir = args.out_dir or os.path.dirname(os.path.abspath(__file__))
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    data_dir = args.data_dir or os.path.normpath(os.path.join(script_dir, "..", "data"))
+    data_dir = args.data_dir or os.path.normpath(os.path.join(script_dir, "..", "Data"))
 
     print(f"Worst-case rules: {DECKS}D  {'S17' if S17 else 'H17'}  {'ENHC' if ENHC else 'US'}")
     print(f"Confidence: {args.confidence*100:.0f}%  (z={z:.3f})")

@@ -849,8 +849,8 @@ if __name__ == "__main__":
     parser.add_argument("--draw-aces",    action="store_true", default=False)
     parser.add_argument("--confidence",   type=float, default=0.95,
                         help="Confidence level for iteration calculation e.g. 0.95 or 0.99")
-    parser.add_argument("--data-dir",     dest="data_dir", default=None,
-                        help="Path to JSON data directory for iteration calc (default: ../data)")
+    parser.add_argument("--data-dir",     dest="data_dir", default="../Data",
+                        help="Path to JSON data directory for iteration calc (default: ../Data)")
     parser.add_argument("--workers",      type=int,   default=None)
     parser.add_argument("--mode",         choices=["hard", "soft", "pairs", "all"], default="all")
     parser.add_argument("--matrices-dir", dest="matrices_dir",
@@ -864,7 +864,7 @@ if __name__ == "__main__":
 
     folder = _strategy_folder(args.matrices_dir, args.decks, args.s17, args.enhc)
     script_dir = Path(os.path.dirname(os.path.abspath(__file__)))
-    data_dir = Path(args.data_dir) if args.data_dir else (script_dir / ".." / "data").resolve()
+    data_dir = Path(args.data_dir) if args.data_dir else (script_dir / ".." / "Data").resolve()
 
     print(f"Settings : {args.decks}D  {'S17' if args.s17 else 'H17'}  {'ENHC' if args.enhc else 'US'}  {'DAS' if args.das else 'nDAS'}  BJ={args.bj_pay}x")
     print(f"Folder   : {folder}")

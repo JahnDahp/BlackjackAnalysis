@@ -23,7 +23,7 @@ Usage
                            [--s17 | --h17] [--enhc | --us]
                            [--das | --ndas] [--no-color]
 
-Defaults: data_dir=./data, decks=6, S17, US peek, DAS
+Defaults: data_dir=../Data, decks=6, S17, US peek, DAS
 """
 
 from __future__ import annotations
@@ -409,8 +409,8 @@ def print_legend(use_colour: bool) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Print blackjack basic strategy tables.")
-    parser.add_argument("--data-dir", default="data",
-                        help="Directory containing the four decision JSON files (default: ./data)")
+    parser.add_argument("--data-dir", default="../Data",
+                        help="Directory containing the four decision JSON files (default: ../Data)")
     parser.add_argument("--decks", type=int, default=6, choices=[1, 2, 4, 6, 8],
                         help="Number of decks (default: 6)")
     parser.add_argument("--s17",  dest="s17", action="store_true",  default=True,

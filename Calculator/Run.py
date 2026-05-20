@@ -406,7 +406,7 @@ def main() -> None:
         help="Which decision table to compute. Use 'removed' to generate hit/stand/double with each rank removed.")
     parser.add_argument("--remove-pair-card", action="store_true", default=False,
         help="Split only: remove one extra copy of the pair rank from the shoe.")
-    parser.add_argument("--data-dir", default=None,
+    parser.add_argument("--data-dir", default="../Data",
         help="Path to the directory containing the JSON data files.")
     parser.add_argument("--workers", type=int, default=None,
         help="Number of parallel worker processes. Defaults to cpu_count - 4.")
