@@ -12,7 +12,7 @@ import pandas as pd
 
 from BlackjackSimulator import BlackjackSimulator, DealerSettingsObject
 
-MIN_CELL_ITERS = 1   # floor: always run at least this many iterations
+MIN_CELL_ITERS = 1    # floor: always run at least this many iterations
 MAX_CELL_ITERS = 1_000_000  # cap: beyond this the decision margin is negligible
 MULTIPLIER = 1
 
@@ -23,11 +23,16 @@ MULTIPLIER = 1
 def _calc_and_save_iterations(
     folder: Path, data_dir: Path, confidence: float,
     decks: int, s17: bool, enhc: bool, das: bool,
+    out_folder: Path | None = None, prefix_base: str = "", prefix_das: str = "",
 ) -> None:
     """Compute required iterations per cell at given confidence and save CSVs."""
     import json, math
 
     DECKS, S17, ENHC = decks, s17, enhc
+    if out_folder is None:
+        out_folder = folder
+    out_folder = Path(out_folder)
+    out_folder.mkdir(parents=True, exist_ok=True)
 
     DECK_MAP = {1:"oneDeck",2:"twoDeck",4:"fourDeck",6:"sixDeck",8:"eightDeck"}
 
@@ -238,8 +243,12 @@ def _calc_and_save_iterations(
         ("Pairs_DAS",  _build_pairs(das=True)),
         ("Pairs_NDAS", _build_pairs(das=False)),
     ]:
-        out = folder / f"{name}_Iterations.csv"
+        pfx = prefix_das if "Pairs" in name else prefix_base
+        clean = name.replace("_DAS", "").replace("_NDAS", "")
+        out = out_folder / f"{pfx}_{clean}_Iterations.csv"
         df.to_csv(out)
+        # Also save to strategy folder under original name for _load_iterations_csv
+        df.to_csv(folder / f"{name}_Iterations.csv")
         print(f"  Saved -> {out}  (max={int(df.values.max()):,})", flush=True)
 
 
@@ -252,6 +261,22 @@ def _strategy_folder(base_dir: str, decks: int, s17: bool, enhc: bool) -> Path:
     rule_str = "S17" if s17 else "H17"
     peek_str = "ENHC" if enhc else "US"
     return Path(base_dir) / deck_str / rule_str / peek_str
+
+
+def _output_folder(base_dir: str) -> Path:
+    from datetime import datetime
+    now = datetime.now()
+    stamp = now.strftime(f"SIM_{now.month}_{now.day}_{now.year}_%H-%M")
+    return Path(base_dir) / "Outputs" / "Simulations" / stamp
+
+
+def _rule_prefix(decks: int, s17: bool, enhc: bool, das: bool | None = None) -> str:
+    deck_str = "1D" if decks == 1 else ("2D" if decks == 2 else "MD")
+    rule_str = "S17" if s17 else "H17"
+    peek_str = "ENHC" if enhc else "US"
+    if das is None:
+        return f"{deck_str}_{rule_str}_{peek_str}"
+    return f"{deck_str}_{rule_str}_{peek_str}_{'DAS' if das else 'NDAS'}"
 
 
 def _load_strategy_csv(folder: Path, name: str, das: bool | None = None) -> pd.DataFrame | None:
@@ -461,6 +486,9 @@ class Simulator:
     def calc(
         self,
         strategy_folder: str | Path,
+        out_folder: Path | None = None,
+        prefix_base: str = "",
+        prefix_das: str = "",
         workers: int | None = None,
         modes: list[str] | None = None,
     ) -> dict[str, pd.DataFrame]:
@@ -473,6 +501,10 @@ class Simulator:
         folder = Path(strategy_folder)
         das = self.dealer_settings.DAS
         modes = modes or ["hard", "soft", "pairs"]
+        if out_folder is None:
+            out_folder = folder
+        out_folder = Path(out_folder)
+        out_folder.mkdir(parents=True, exist_ok=True)
 
         hard_strat_df = _load_strategy_csv(folder, "Hard")
         soft_strat_df = _load_strategy_csv(folder, "Soft")
@@ -539,7 +571,7 @@ class Simulator:
         if hard_results:
             df, ev_lookup = _build_matrix(hard_results, totals=list(range(21, 3, -1)))
             df.attrs["ev_lookup"] = ev_lookup
-            out = folder / "Hard_SIM.csv"
+            out = out_folder / f"{prefix_base}_Hard_SIM.csv"
             df.to_csv(out)
             print(f"\nSaved -> {out}\n")
             print(df.to_string())
@@ -548,7 +580,7 @@ class Simulator:
         if soft_results:
             df, ev_lookup = _build_matrix(soft_results, totals=list(range(21, 12, -1)))
             df.attrs["ev_lookup"] = ev_lookup
-            out = folder / "Soft_SIM.csv"
+            out = out_folder / f"{prefix_base}_Soft_SIM.csv"
             df.to_csv(out)
             print(f"\nSaved -> {out}\n")
             print(df.to_string())
@@ -571,7 +603,7 @@ class Simulator:
             }
             df.attrs["ev_lookup"] = ev_lookup
             das_label = "DAS" if das else "NDAS"
-            out = folder / f"Pairs_{das_label}_SIM.csv"
+            out = out_folder / f"{prefix_das}_Pairs_SIM.csv"
             df.to_csv(out)
             print(f"\nSaved -> {out}\n")
             print(df.to_string())
@@ -849,8 +881,8 @@ if __name__ == "__main__":
     parser.add_argument("--draw-aces",    action="store_true", default=False)
     parser.add_argument("--confidence",   type=float, default=0.95,
                         help="Confidence level for iteration calculation e.g. 0.95 or 0.99")
-    parser.add_argument("--data-dir",     dest="data_dir", default="../Data",
-                        help="Path to JSON data directory for iteration calc (default: ../Data)")
+    parser.add_argument("--data-dir",     dest="data_dir", default=None,
+                        help="Path to JSON data directory for iteration calc (default: ../data)")
     parser.add_argument("--workers",      type=int,   default=None)
     parser.add_argument("--mode",         choices=["hard", "soft", "pairs", "all"], default="all")
     parser.add_argument("--matrices-dir", dest="matrices_dir",
@@ -864,16 +896,21 @@ if __name__ == "__main__":
 
     folder = _strategy_folder(args.matrices_dir, args.decks, args.s17, args.enhc)
     script_dir = Path(os.path.dirname(os.path.abspath(__file__)))
-    data_dir = Path(args.data_dir) if args.data_dir else (script_dir / ".." / "Data").resolve()
+    data_dir = Path(args.data_dir) if args.data_dir else (script_dir / ".." / "data").resolve()
 
     print(f"Settings : {args.decks}D  {'S17' if args.s17 else 'H17'}  {'ENHC' if args.enhc else 'US'}  {'DAS' if args.das else 'nDAS'}  BJ={args.bj_pay}x")
     print(f"Folder   : {folder}")
     print(f"Mode     : {args.mode}  |  Confidence: {args.confidence*100:.0f}%")
 
+    out_folder  = _output_folder(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    prefix_base = _rule_prefix(args.decks, args.s17, args.enhc)
+    prefix_das  = _rule_prefix(args.decks, args.s17, args.enhc, args.das)
+
     # Step 1: compute and save iteration CSVs
     _calc_and_save_iterations(
         folder, data_dir, args.confidence,
         decks=args.decks, s17=args.s17, enhc=args.enhc, das=args.das,
+        out_folder=out_folder, prefix_base=prefix_base, prefix_das=prefix_das,
     )
 
     # Step 2: build hand compositions
@@ -887,7 +924,9 @@ if __name__ == "__main__":
         "soft":  ["soft"],
         "pairs": ["pairs"],
     }
-    results_dfs = sim.calc(folder, workers=args.workers, modes=mode_map[args.mode])
+    results_dfs = sim.calc(folder, out_folder=out_folder,
+                           prefix_base=prefix_base, prefix_das=prefix_das,
+                           workers=args.workers, modes=mode_map[args.mode])
 
     # ── Accuracy report ──────────────────────────────────────────────────
     print("\n" + "=" * 50)

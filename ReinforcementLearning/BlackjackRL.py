@@ -131,6 +131,22 @@ def _strategy_folder(base_dir: str, decks: int, s17: bool, enhc: bool, das: bool
             / ("ENHC" if enhc else "US") / ("DAS" if das else "NDAS"))
 
 
+def _output_folder(base_dir: str) -> Path:
+    from datetime import datetime
+    now = datetime.now()
+    stamp = now.strftime(f"RL_{now.month}_{now.day}_{now.year}_%H-%M")
+    return Path(base_dir) / "Outputs" / "RL" / stamp
+
+
+def _rule_prefix(decks: int, s17: bool, enhc: bool, das: bool | None = None) -> str:
+    deck_str = "1D" if decks == 1 else ("2D" if decks == 2 else "MD")
+    rule_str = "S17" if s17 else "H17"
+    peek_str = "ENHC" if enhc else "US"
+    if das is None:
+        return f"{deck_str}_{rule_str}_{peek_str}"
+    return f"{deck_str}_{rule_str}_{peek_str}_{'DAS' if das else 'NDAS'}"
+
+
 def _load_strategy_csv(folder: Path, name: str, das: bool | None = None) -> pd.DataFrame | None:
     parts  = folder.parts
     prefix = "_".join(parts[-3:]) if len(parts) >= 3 else ""
@@ -345,7 +361,11 @@ def train(
 # Export & accuracy report
 # ---------------------------------------------------------------------------
 
-def export_csvs(q: QTable, folder: Path) -> dict[str, pd.DataFrame]:
+def export_csvs(q: QTable, folder: Path, out_folder: Path | None = None, prefix_base: str = "", prefix_das: str = "") -> dict[str, pd.DataFrame]:
+    if out_folder is None:
+        out_folder = folder
+    out_folder = Path(out_folder)
+    out_folder.mkdir(parents=True, exist_ok=True)
     strat     = q.to_strategy_dicts()
     upcards   = [2, 3, 4, 5, 6, 7, 8, 9, 10, 1]
     up_labels = ["2","3","4","5","6","7","8","9","10","A"]
@@ -357,7 +377,7 @@ def export_csvs(q: QTable, folder: Path) -> dict[str, pd.DataFrame]:
     for name, keys, key_labels, table_key in [
         ("Hard",       list(range(21,3,-1)), [str(t) for t in range(21,3,-1)],   "hard"),
         ("Soft",       list(range(21,12,-1)), [str(t) for t in range(21,12,-1)], "soft"),
-        (f"Pairs_{'DAS' if q.das else 'NDAS'}", pair_ranks, pair_labels, "pairs"),
+        ("Pairs", pair_ranks, pair_labels, "pairs"),
     ]:
         rows = [[strat[table_key].get(k, {}).get("A" if uc==1 else str(uc), "H")
                  for uc in upcards] for k in keys]
@@ -366,7 +386,9 @@ def export_csvs(q: QTable, folder: Path) -> dict[str, pd.DataFrame]:
         if name in ("Hard", "Soft"):
             try: df.index = df.index.astype(int)
             except: pass
-        path = folder / f"{name}_RL.csv"
+        pfx = prefix_das if name == "Pairs" else prefix_base
+        file_name = f"{pfx}_{name}_RL.csv" if pfx else f"{name}_RL.csv"
+        path = out_folder / file_name
         df.to_csv(path)
         print(f"\nSaved -> {path}\n")
         print(df.to_string())
@@ -471,5 +493,8 @@ if __name__ == "__main__":
 
     print(f"\nTraining complete in {elapsed:.1f}s  ({args.episodes/elapsed:,.0f} episodes/sec)")
 
-    out_dfs = export_csvs(q, folder)
+    out_folder = _output_folder(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    prefix_base = _rule_prefix(args.decks, args.s17, args.enhc)
+    prefix_das  = _rule_prefix(args.decks, args.s17, args.enhc, args.das)
+    out_dfs = export_csvs(q, folder, out_folder=out_folder, prefix_base=prefix_base, prefix_das=prefix_das)
     accuracy_report(out_dfs, folder, das=args.das)
