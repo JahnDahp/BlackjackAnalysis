@@ -5,3 +5,4 @@ __pycache__
 *RL.csv
 Outputs/Simulations/SIM_*/
 Outputs/RL/RL_*/
+*.png

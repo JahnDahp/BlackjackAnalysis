@@ -1,15 +1,11 @@
 from __future__ import annotations
-
 import math
-import os
 import random
-import sys
 from pathlib import Path
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Simulator"))
-
 import pandas as pd
-
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from BlackjackSimulator import (
     BlackjackSimulator, DealerSettingsObject,
     _STAND, _HIT, _DOUBLE, _SPLIT, _NONE,
@@ -24,9 +20,8 @@ HIT    = _HIT     # 1
 DOUBLE = _DOUBLE  # 2
 SPLIT  = _SPLIT   # 3
 
-ACTION_NAMES     = {STAND: "S", HIT: "H", DOUBLE: "DH", SPLIT: "P"}
+ACTION_NAMES     = {STAND: "S", HIT: "H", DOUBLE: "DH", SPLIT: "P"}  # DH is default; DS resolved in to_strategy_dicts
 HARD_ACTIONS     = [STAND, HIT, DOUBLE]
-SOFT_ACTIONS     = [STAND, HIT, DOUBLE]
 PAIR_DAS_ACTIONS = [STAND, HIT, DOUBLE, SPLIT]
 PAIR_NDAS_ACTIONS= [STAND, HIT, SPLIT]
 
@@ -37,12 +32,10 @@ PAIR_NDAS_ACTIONS= [STAND, HIT, SPLIT]
 _N_ACTIONS = 4
 
 def _empty_table(n_rows: int) -> list:
-    # Slight HIT bias: stand=0.0, hit=0.001, double=0.0, split=0.0
-    # Prevents stand winning ties by default at unvisited cells
+    # Optimistic initialization at +1.0 — all unvisited actions look promising,
+    # driving natural exploration without needing high epsilon.
     def _init():
-        q = [0.0] * _N_ACTIONS
-        q[HIT] = 0.001
-        return q
+        return [1.0] * _N_ACTIONS
     return [[_init() for _ in range(10)] for _ in range(n_rows)]
 
 
@@ -69,6 +62,7 @@ class QTable:
         if table == "soft": return self.soft
         return self.pairs
 
+
     def _actions(self, table: str) -> list[int]:
         if table == "pairs_das":  return PAIR_DAS_ACTIONS
         if table == "pairs_ndas": return PAIR_NDAS_ACTIONS
@@ -81,7 +75,7 @@ class QTable:
         return max(self._actions(table), key=lambda a: q[a])
 
     def update(self, table: str, key: int, upcard: int,
-               action: int, reward: float, alpha: float) -> None:
+               action: int, reward: float, alpha: float = 0.1) -> None:
         row = self._row(table, key)
         col = upcard - 1
         tbl = self._tbl(table)
@@ -107,17 +101,31 @@ class QTable:
         return (self._hard_dbl, self._soft_dbl,
                 self._hard_nodbl, self._soft_nodbl)
 
+    def _action_code(self, table: str, key: int, upcard: int) -> str:
+        """Return strategy code including DS vs DH distinction for doubles."""
+        best = self.best_action(table, key, upcard)
+        if best != DOUBLE:
+            return ACTION_NAMES[best]
+        # Double: check second-best to determine fallback (DS or DH)
+        actions = self._actions(table)
+        row = self._row(table, key)
+        col = upcard - 1
+        q   = self._tbl(table)[row][col]
+        others = [a for a in actions if a != DOUBLE]
+        second = max(others, key=lambda a: q[a])
+        return "DS" if second == STAND else "DH"
+
     def to_strategy_dicts(self) -> dict:
         result = {"hard": {}, "soft": {}, "pairs": {}}
         for upcard in range(1, 11):
             uc_label = "A" if upcard == 1 else str(upcard)
             for total in range(4, 22):
-                result["hard"].setdefault(total, {})[uc_label] = ACTION_NAMES[self.best_action("hard", total, upcard)]
+                result["hard"].setdefault(total, {})[uc_label] = self._action_code("hard", total, upcard)
             for total in range(13, 22):
-                result["soft"].setdefault(total, {})[uc_label] = ACTION_NAMES[self.best_action("soft", total, upcard)]
+                result["soft"].setdefault(total, {})[uc_label] = self._action_code("soft", total, upcard)
             for pr in range(1, 11):
-                result["pairs"].setdefault(pr, {})[uc_label] = ACTION_NAMES[self.best_action(
-                    "pairs_das" if self.das else "pairs_ndas", pr, upcard)]
+                result["pairs"].setdefault(pr, {})[uc_label] = self._action_code(
+                    "pairs_das" if self.das else "pairs_ndas", pr, upcard)
         return result
 
 
@@ -149,7 +157,9 @@ def _rule_prefix(decks: int, s17: bool, enhc: bool, das: bool | None = None) -> 
 
 def _load_strategy_csv(folder: Path, name: str, das: bool | None = None) -> pd.DataFrame | None:
     parts  = folder.parts
-    prefix = "_".join(parts[-3:]) if len(parts) >= 3 else ""
+    # Strip DAS/NDAS subfolder if present — verified CSVs use 3-part prefix e.g. 1D_S17_US
+    clean_parts = [p for p in parts[-4:] if p not in ("DAS", "NDAS")][-3:]
+    prefix = "_".join(clean_parts) if len(clean_parts) >= 3 else "_".join(parts[-3:])
     das_str = ("DAS" if das else "NDAS") if das is not None else None
     candidates = []
     if das_str:
@@ -168,18 +178,6 @@ def _load_strategy_csv(folder: Path, name: str, das: bool | None = None) -> pd.D
     return None
 
 
-def _series_from_df(df: pd.DataFrame | None, up_card: int) -> pd.Series | None:
-    if df is None:
-        return None
-    col = "A" if up_card == 1 else str(up_card)
-    if col not in df.columns:
-        return None
-    s = df[col].copy()
-    def _to_int(v):
-        sv = str(v).strip()
-        return 1 if sv == "A" else int(sv)
-    s.index = s.index.map(_to_int)
-    return s
 
 
 # ---------------------------------------------------------------------------
@@ -243,11 +241,8 @@ def _run_episode(
     hand: list[int],
     epsilon: float,
     alpha: float,
-    # Continuation strategy arrays — from verified CSV or current Q-table
     hard_dbl: list[int],
     soft_dbl: list[int],
-    hard_nodbl: list[int],
-    soft_nodbl: list[int],
 ) -> None:
     table_type, key = _classify(hand)
     table = ("pairs_das" if sim.rules.DAS else "pairs_ndas") if table_type == "pair" else table_type
@@ -279,7 +274,7 @@ def _train_worker(args: tuple) -> tuple:
     sim = BlackjackSimulator(rules)
     q   = QTable(das=rules.DAS)
     upcard_weights = _upcard_weights(rules.decks)
-    hard_dbl, soft_dbl, hard_nodbl, soft_nodbl = q.get_strategy_arrays()
+    hard_dbl, soft_dbl, _, _ = q.get_strategy_arrays()
 
     rebuild_every = 10_000
     log_every     = max(1, n_episodes // 10)
@@ -291,10 +286,10 @@ def _train_worker(args: tuple) -> tuple:
         hand    = _sample_hand(rules.decks, upcard)
 
         _run_episode(sim, q, upcard, hand, epsilon, alpha,
-                     hard_dbl, soft_dbl, hard_nodbl, soft_nodbl)
+                     hard_dbl, soft_dbl)
 
         if ep % rebuild_every == 0:
-            hard_dbl, soft_dbl, hard_nodbl, soft_nodbl = q.get_strategy_arrays()
+            hard_dbl, soft_dbl, _, _ = q.get_strategy_arrays()
 
         if ep % log_every == 0:
             pct = 100 * ep // n_episodes
@@ -315,10 +310,7 @@ def _average_qtables(results: list[tuple], das: bool) -> QTable:
     for row_i in range(9):
         for col_i in range(10):
             for a in range(_N_ACTIONS):
-                q.soft[row_i][col_i][a] = sum(r[1][row_i][col_i][a] for r in results) / n
-    for row_i in range(10):
-        for col_i in range(10):
-            for a in range(_N_ACTIONS):
+                q.soft[row_i][col_i][a]  = sum(r[1][row_i][col_i][a] for r in results) / n
                 q.pairs[row_i][col_i][a] = sum(r[2][row_i][col_i][a] for r in results) / n
     q._dirty = True
     return q
@@ -326,9 +318,8 @@ def _average_qtables(results: list[tuple], das: bool) -> QTable:
 
 def train(
     rules: DealerSettingsObject,
-    folder: Path,
     n_episodes: int = 50_000_000,
-    epsilon_start: float = 1.0,
+    epsilon_start: float = 0.1,
     epsilon_end: float = 0.01,
     alpha_start: float = 0.1,
     alpha_end: float = 0.001,
@@ -402,11 +393,10 @@ def accuracy_report(out_dfs: dict[str, pd.DataFrame], folder: Path, das: bool) -
     print("ACCURACY REPORT")
     print("=" * 50)
 
-    pairs_label = "DAS" if das else "NDAS"
     table_map = {
-        "Hard":                    ("Hard",  None),
-        "Soft":                    ("Soft",  None),
-        f"Pairs_{pairs_label}":    ("Pairs", das),
+        "Hard":  ("Hard",  None),
+        "Soft":  ("Soft",  None),
+        "Pairs": ("Pairs", das),
     }
 
     total_wrong = 0
@@ -462,7 +452,7 @@ if __name__ == "__main__":
     parser.add_argument("--ndas",         dest="das", action="store_false")
     parser.add_argument("--bj-pay",       type=float, default=1.5)
     parser.add_argument("--episodes",     type=int,   default=50_000_000)
-    parser.add_argument("--epsilon",      type=float, default=1.0)
+    parser.add_argument("--epsilon",      type=float, default=0.1)
     parser.add_argument("--alpha",        type=float, default=0.1)
     parser.add_argument("--workers",      type=int,   default=None)
     parser.add_argument("--matrices-dir", dest="matrices_dir",
@@ -484,7 +474,7 @@ if __name__ == "__main__":
     print(f"Episodes : {args.episodes:,}  epsilon: {args.epsilon}→0.01  alpha: {args.alpha}→0.001\n")
 
     t0 = time.time()
-    q = train(rules, folder,
+    q = train(rules,
               n_episodes=args.episodes,
               epsilon_start=args.epsilon,
               alpha_start=args.alpha,
@@ -497,4 +487,8 @@ if __name__ == "__main__":
     prefix_base = _rule_prefix(args.decks, args.s17, args.enhc)
     prefix_das  = _rule_prefix(args.decks, args.s17, args.enhc, args.das)
     out_dfs = export_csvs(q, folder, out_folder=out_folder, prefix_base=prefix_base, prefix_das=prefix_das)
-    accuracy_report(out_dfs, folder, das=args.das)
+    verified_folder = (Path(args.matrices_dir)
+                       / ("1D" if args.decks == 1 else ("2D" if args.decks == 2 else "MD"))
+                       / ("S17" if args.s17 else "H17")
+                       / ("ENHC" if args.enhc else "US"))
+    accuracy_report(out_dfs, verified_folder, das=args.das)

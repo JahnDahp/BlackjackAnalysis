@@ -2,7 +2,7 @@
 CalcIterations.py
 
 Calculates the minimum Monte Carlo iterations required per strategy cell
-to distinguish the best decision from the second-best at 95% confidence.
+to distinguish the best decision from the second-best at a given confidence.
 
 Uses worst-case rules (8D H17 ENHC) as an upper bound — any other rule set
 will require fewer iterations. Outputs four CSVs into the Simulator folder:
@@ -28,13 +28,19 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 # Worst-case settings (8D H17 ENHC)
 # ---------------------------------------------------------------------------
-DECKS   = 8
-S17     = False   # H17
-ENHC    = True
-BJ_PAY  = 1.5
-CONFIDENCE = 0.95   # overrideable from CLI
+DECKS      = 8
+S17        = False   # H17
+ENHC       = True
+BJ_PAY     = 1.5
+CONFIDENCE = 0.95
 
 DECK_MAP = {1:"oneDeck", 2:"twoDeck", 4:"fourDeck", 6:"sixDeck", 8:"eightDeck"}
+
+# JSON stores upcards as: [0]=Ace, [1]=2, [2]=3, ..., [9]=10
+# up_labels order:        idx 0 =2, idx 1 =3, ..., idx 8 =10, idx 9 =A
+# Mapping: uc_idx -> json_idx = (uc_idx + 1) % 10
+def _json_idx(uc_idx: int) -> int:
+    return (uc_idx + 1) % 10
 
 
 # ---------------------------------------------------------------------------
@@ -86,21 +92,34 @@ def split_var(sp: dict, das: bool) -> float:
     w=sp["noDouble"]["winProb"]; t=sp["noDouble"]["tieProb"]; l=sp["noDouble"]["loseProb"]
     ev = split_ev(sp, das)
     if das:
-        win4=w2**2; win3=2*w2*w; win2=2*w2*(t+t2)+w**2
-        tie=2*w2*l2+2*w*l+(t+t2)**2
-        lose2=2*l2*(t+t2)+l**2; lose3=2*l2*l; lose4=l2**2
-        return 1+15*(win4+lose4)+8*(win3+lose3)+3*(win2+lose2)-tie-ev**2
-    return 1+3*(w**2+l**2)-(2*w*l+t**2)-ev**2
+        return (1 + 15*(w2**2+l2**2) + 8*(2*w2*w+2*l2*l)
+                + 3*(2*w2*(t+t2)+w**2+2*l2*(t+t2)+l**2)
+                - (2*w2*l2+2*w*l+(t+t2)**2) - ev**2)
+    return 1 + 3*(w**2+l**2) - (2*w*l+t**2) - ev**2
 
 
 # ---------------------------------------------------------------------------
 # Iteration formula  N = z² × (σ₁² + σ₂²) / Δ²
+# Only computed for best vs second-best — the only comparison that matters.
 # ---------------------------------------------------------------------------
 
 def required_n(var1: float, var2: float, delta: float, z: float) -> int:
     if delta <= 1e-10:
         return 0
     return math.ceil(z**2 * (var1 + var2) / delta**2)
+
+
+def _worst_n(evs: dict[str, tuple[float, float]], z: float) -> int:
+    """Return iterations needed to distinguish best from second-best action."""
+    items = sorted(evs.items(), key=lambda x: -x[1][0])
+    if len(items) < 2:
+        return 0
+    _, (e1, v1) = items[0]
+    _, (e2, v2) = items[1]
+    if not (math.isfinite(e1) and math.isfinite(e2)): return 0
+    if not (math.isfinite(v1) and math.isfinite(v2)): return 0
+    if v1 < 0 or v2 < 0: return 0
+    return required_n(v1, v2, abs(e1 - e2), z)
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +156,7 @@ def _group_by_total(ds_upcard: list, two_card_only: bool = False) -> dict[int, l
 
 
 # ---------------------------------------------------------------------------
-# Build one matrix of iteration counts
+# Build matrices
 # ---------------------------------------------------------------------------
 
 def _build_hsd_matrix(
@@ -152,47 +171,25 @@ def _build_hsd_matrix(
     for total in totals:
         row = []
         for uc_idx in range(10):
-            s_by_t = _group_by_total(stand_ds[hand_type][uc_idx])
-            h_by_t = _group_by_total(hit_ds[hand_type][uc_idx])
-            d_by_t = _group_by_total(double_ds[hand_type][uc_idx], two_card_only=True)
-
-            s_entries = s_by_t.get(total, [])
-            h_entries = h_by_t.get(total, [])
+            ji = _json_idx(uc_idx)
+            d_by_t = _group_by_total(double_ds[hand_type][ji], two_card_only=True)
             d_entries = d_by_t.get(total, [])
 
-            if not s_entries:
-                row.append(0)
-                continue
-
-            evs = {}
             if d_entries:
-                # Double only available on 2-card hands — use 2-card entries for all
-                s2 = _group_by_total(stand_ds[hand_type][uc_idx], two_card_only=True).get(total, [])
-                h2 = _group_by_total(hit_ds[hand_type][uc_idx],   two_card_only=True).get(total, [])
+                s2 = _group_by_total(stand_ds[hand_type][ji], two_card_only=True).get(total, [])
+                h2 = _group_by_total(hit_ds[hand_type][ji],   two_card_only=True).get(total, [])
+                evs: dict[str, tuple[float, float]] = {}
                 if s2: evs["S"] = _weighted(s2, stand_ev, stand_var)
-                if h2: evs["H"] = _weighted(h2, hit_ev, hit_var)
+                if h2: evs["H"] = _weighted(h2, hit_ev,   hit_var)
                 evs["D"] = _weighted(d_entries, double_ev, double_var)
             else:
-                # No double available — use all-card stand/hit
-                evs["S"] = _weighted(s_entries, stand_ev, stand_var)
-                if h_entries: evs["H"] = _weighted(h_entries, hit_ev, hit_var)
+                s_e = _group_by_total(stand_ds[hand_type][ji]).get(total, [])
+                h_e = _group_by_total(hit_ds[hand_type][ji]).get(total, [])
+                evs = {}
+                if s_e: evs["S"] = _weighted(s_e, stand_ev, stand_var)
+                if h_e: evs["H"] = _weighted(h_e, hit_ev,   hit_var)
 
-            sorted_evs = sorted(evs.items(), key=lambda x: x[1][0], reverse=True)
-            _, (best_ev, best_var)   = sorted_evs[0]
-            _, (second_ev, second_var) = sorted_evs[1]
-
-            delta = best_ev - second_ev
-            # Worst case per total = max N across all decision pairs
-            pairs_for_n = [
-                (required_n(v1, v2, abs(e1-e2), z), abs(e1-e2),
-                 c1, c2, e1, e2, v1, v2)
-                for i, (c1, (e1,v1)) in enumerate(sorted_evs)
-                for j, (c2, (e2,v2)) in enumerate(sorted_evs)
-                if i < j
-            ]
-            worst = max(pairs_for_n, key=lambda x: x[0])
-            n = worst[0]
-            row.append(n)
+            row.append(_worst_n(evs, z))
         rows.append(row)
 
     df = pd.DataFrame(rows, index=list(totals), columns=up_labels)
@@ -211,14 +208,14 @@ def _build_pairs_matrix(
     rows = []
     for pair_val in pair_order:
         row = []
-        pair_rank = pair_val  # 1=A, 2-10 as-is
-        is_soft   = (pair_rank == 1)
-        ht        = "soft" if is_soft else "hard"
+        pair_rank = pair_val
+        ht = "soft" if pair_rank == 1 else "hard"
 
         for uc_idx in range(10):
-            # Stand/Hit/Double: find the [pair_rank, pair_rank] entry
-            def _pair_entries(ds_ht):
-                return [e for e in ds_ht[ht][uc_idx]
+            ji = _json_idx(uc_idx)
+
+            def _pair_entries(ds_ht, ji=ji):
+                return [e for e in ds_ht[ht][ji]
                         if len(e[0]) == 2
                         and e[0][0]["rank"] == pair_rank
                         and e[0][1]["rank"] == pair_rank]
@@ -227,33 +224,16 @@ def _build_pairs_matrix(
             h_entries = _pair_entries(hit_ds)
             d_entries = _pair_entries(double_ds)
 
-            # Split
-            sp_entry = split_pairs[uc_idx][pair_rank - 1]
-            sp_dict  = sp_entry[1]
+            sp_dict  = split_pairs[ji][pair_rank - 1][1]
             sp_ev_v  = split_ev(sp_dict, das)
             sp_var_v = split_var(sp_dict, das)
 
-            evs = {"P": (sp_ev_v, sp_var_v)}
+            evs: dict[str, tuple[float, float]] = {"P": (sp_ev_v, sp_var_v)}
             if s_entries: evs["S"] = _weighted(s_entries, stand_ev, stand_var)
-            if h_entries: evs["H"] = _weighted(h_entries, hit_ev, hit_var)
+            if h_entries: evs["H"] = _weighted(h_entries, hit_ev,   hit_var)
             if d_entries: evs["D"] = _weighted(d_entries, double_ev, double_var)
 
-            if len(evs) < 2:
-                row.append(0)
-                continue
-
-            sorted_evs = sorted(evs.items(), key=lambda x: x[1][0], reverse=True)
-
-            pairs_for_n = [
-                (required_n(v1, v2, abs(e1-e2), z), abs(e1-e2),
-                 c1, c2, e1, e2, v1, v2)
-                for i, (c1, (e1,v1)) in enumerate(sorted_evs)
-                for j, (c2, (e2,v2)) in enumerate(sorted_evs)
-                if i < j
-            ]
-            worst = max(pairs_for_n, key=lambda x: x[0])
-            n = worst[0]
-            row.append(n)
+            row.append(_worst_n(evs, z))
         rows.append(row)
 
     df = pd.DataFrame(rows, index=pair_labels, columns=up_labels)
@@ -266,146 +246,64 @@ def _build_pairs_matrix(
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Calculate worst-case Monte Carlo iterations per strategy cell "
-            "(assumes 8D H17 ENHC as upper bound). Outputs CSVs to Simulator folder."
-        )
-    )
-    parser.add_argument("--data-dir",   dest="data_dir", default=None,
-                        help="Path to JSON data directory (default: ../Data relative to this script)")
-    parser.add_argument("--out-dir",    dest="out_dir",  default=None,
-                        help="Output directory (default: same folder as this script)")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data-dir",   dest="data_dir", default=None)
+    parser.add_argument("--out-dir",    dest="out_dir",  default=None)
     parser.add_argument("--confidence", type=float, default=CONFIDENCE)
     args = parser.parse_args()
 
-    # Inverse normal CDF via rational approximation (Beasley-Springer-Moro)
     def norm_ppf(p: float) -> float:
-        a = [0, -3.969683028665376e+01, 2.209460984245205e+02,
-             -2.759285104469687e+02, 1.383577518672690e+02,
-             -3.066479806614716e+01, 2.506628277459239e+00]
-        b = [0, -5.447609879822406e+01, 1.615858368580409e+02,
-             -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01]
-        c = [0, -7.784894002430293e-03, -3.223964580411365e-01,
-             -2.400758277161838e+00, -2.549732539343734e+00,
-              4.374664141464968e+00, 2.938163982698783e+00]
-        d = [0, 7.784695709041462e-03, 3.224671290700398e-01,
-             2.445134137142996e+00, 3.754408661907416e+00]
+        a=[0,-3.969683028665376e+01,2.209460984245205e+02,-2.759285104469687e+02,
+           1.383577518672690e+02,-3.066479806614716e+01,2.506628277459239e+00]
+        b=[0,-5.447609879822406e+01,1.615858368580409e+02,-1.556989798598866e+02,
+           6.680131188771972e+01,-1.328068155288572e+01]
+        c=[0,-7.784894002430293e-03,-3.223964580411365e-01,-2.400758277161838e+00,
+           -2.549732539343734e+00,4.374664141464968e+00,2.938163982698783e+00]
+        d=[0,7.784695709041462e-03,3.224671290700398e-01,2.445134137142996e+00,3.754408661907416e+00]
         p_low, p_high = 0.02425, 1 - 0.02425
         if p < p_low:
-            q = math.sqrt(-2 * math.log(p))
-            return (((((c[1]*q+c[2])*q+c[3])*q+c[4])*q+c[5])*q+c[6]) /                    ((((d[1]*q+d[2])*q+d[3])*q+d[4])*q+1)
+            q = math.sqrt(-2*math.log(p))
+            return (((((c[1]*q+c[2])*q+c[3])*q+c[4])*q+c[5])*q+c[6])/((((d[1]*q+d[2])*q+d[3])*q+d[4])*q+1)
         elif p <= p_high:
-            q = p - 0.5; r = q*q
-            return (((((a[1]*r+a[2])*r+a[3])*r+a[4])*r+a[5])*r+a[6])*q /                    (((((b[1]*r+b[2])*r+b[3])*r+b[4])*r+b[5])*r+1)
+            q = p-0.5; r = q*q
+            return (((((a[1]*r+a[2])*r+a[3])*r+a[4])*r+a[5])*r+a[6])*q/(((((b[1]*r+b[2])*r+b[3])*r+b[4])*r+b[5])*r+1)
         else:
-            q = math.sqrt(-2 * math.log(1 - p))
-            return -(((((c[1]*q+c[2])*q+c[3])*q+c[4])*q+c[5])*q+c[6]) /                     ((((d[1]*q+d[2])*q+d[3])*q+d[4])*q+1)
+            q = math.sqrt(-2*math.log(1-p))
+            return -(((((c[1]*q+c[2])*q+c[3])*q+c[4])*q+c[5])*q+c[6])/((((d[1]*q+d[2])*q+d[3])*q+d[4])*q+1)
 
     z = norm_ppf(args.confidence)
-    out_dir = args.out_dir or os.path.dirname(os.path.abspath(__file__))
-
     script_dir = os.path.dirname(os.path.abspath(__file__))
+    out_dir  = args.out_dir  or script_dir
     data_dir = args.data_dir or os.path.normpath(os.path.join(script_dir, "..", "Data"))
 
-    print(f"Worst-case rules: {DECKS}D  {'S17' if S17 else 'H17'}  {'ENHC' if ENHC else 'US'}")
-    print(f"Confidence: {args.confidence*100:.0f}%  (z={z:.3f})")
-    print(f"Loading JSON data from: {data_dir}\n")
+    print(f"Worst-case rules : {DECKS}D  {'S17' if S17 else 'H17'}  {'ENHC' if ENHC else 'US'}")
+    print(f"Confidence       : {args.confidence*100:.0f}%  (z={z:.3f})")
+    print(f"Data dir         : {data_dir}\n")
 
-    stand_raw  = _load(data_dir, "stand.json")
-    hit_raw    = _load(data_dir, "hit.json")
-    double_raw = _load(data_dir, "double.json")
-    split_raw  = _load(data_dir, "split.json")
+    stand_ds  = _get_ds(_load(data_dir, "stand.json")["probs"],  DECKS, S17, ENHC)
+    hit_ds    = _get_ds(_load(data_dir, "hit.json")["probs"],    DECKS, S17, ENHC)
+    double_ds = _get_ds(_load(data_dir, "double.json")["probs"], DECKS, S17, ENHC)
+    split_ds  = _get_ds(_load(data_dir, "split.json")["probs"],  DECKS, S17, ENHC)
 
-    stand_ds  = _get_ds(stand_raw["probs"],  DECKS, S17, ENHC)
-    hit_ds    = _get_ds(hit_raw["probs"],    DECKS, S17, ENHC)
-    double_ds = _get_ds(double_raw["probs"], DECKS, S17, ENHC)
-    split_ds  = _get_ds(split_raw["probs"],  DECKS, S17, ENHC)
+    tables = [
+        ("Hard",        _build_hsd_matrix(stand_ds, hit_ds, double_ds, "hard", range(21, 3,  -1), z)),
+        ("Soft",        _build_hsd_matrix(stand_ds, hit_ds, double_ds, "soft", range(21, 12, -1), z)),
+        ("Pairs_DAS",   _build_pairs_matrix(stand_ds, hit_ds, double_ds, split_ds["DAS"],  das=True,  z=z)),
+        ("Pairs_NDAS",  _build_pairs_matrix(stand_ds, hit_ds, double_ds, split_ds["nDAS"], das=False, z=z)),
+    ]
 
-    # ── Hard ──────────────────────────────────────────────────────────────
-    print("Computing Hard...")
-    hard_df = _build_hsd_matrix(stand_ds, hit_ds, double_ds, "hard", range(21, 3, -1), z)
-    hard_path = os.path.join(out_dir, "Hard_Iterations.csv")
-    hard_df.to_csv(hard_path)
-    print(f"  Saved -> {hard_path}")
-    print(hard_df.to_string())
-
-    # ── Soft ──────────────────────────────────────────────────────────────
-    print("\nComputing Soft...")
-    soft_df = _build_hsd_matrix(stand_ds, hit_ds, double_ds, "soft", range(21, 12, -1), z)
-    soft_path = os.path.join(out_dir, "Soft_Iterations.csv")
-    soft_df.to_csv(soft_path)
-    print(f"  Saved -> {soft_path}")
-    print(soft_df.to_string())
-
-    # ── Pairs DAS ─────────────────────────────────────────────────────────
-    print("\nComputing Pairs DAS...")
-    pairs_das_df = _build_pairs_matrix(stand_ds, hit_ds, double_ds, split_ds["DAS"], das=True, z=z)
-    pairs_das_path = os.path.join(out_dir, "Pairs_DAS_Iterations.csv")
-    pairs_das_df.to_csv(pairs_das_path)
-    print(f"  Saved -> {pairs_das_path}")
-    print(pairs_das_df.to_string())
-
-    # ── Pairs nDAS ────────────────────────────────────────────────────────
-    print("\nComputing Pairs nDAS...")
-    pairs_ndas_df = _build_pairs_matrix(stand_ds, hit_ds, double_ds, split_ds["nDAS"], das=False, z=z)
-    pairs_ndas_path = os.path.join(out_dir, "Pairs_NDAS_Iterations.csv")
-    pairs_ndas_df.to_csv(pairs_ndas_path)
-    print(f"  Saved -> {pairs_ndas_path}")
-    print(pairs_ndas_df.to_string())
-
-    # ── Summary ───────────────────────────────────────────────────────────
-    all_dfs = {
-        "Hard": hard_df, "Soft": soft_df,
-        "Pairs_DAS": pairs_das_df, "Pairs_NDAS": pairs_ndas_df,
-    }
-    # Compute per-cell deltas for diagnostic output
-    def _cell_details(stand_ds, hit_ds, double_ds, hand_type, total, uc_idx, z):
-        """Return all EVs and the worst-case delta for one cell."""
-        up_labels = ["2","3","4","5","6","7","8","9","10","A"]
-        d_by_t = _group_by_total(double_ds[hand_type][uc_idx], two_card_only=True)
-        d_entries = d_by_t.get(total, [])
-        if d_entries:
-            s2 = _group_by_total(stand_ds[hand_type][uc_idx], two_card_only=True).get(total, [])
-            h2 = _group_by_total(hit_ds[hand_type][uc_idx],   two_card_only=True).get(total, [])
-            evs = {}
-            if s2: evs["S"] = _weighted(s2, stand_ev, stand_var)
-            if h2: evs["H"] = _weighted(h2, hit_ev, hit_var)
-            evs["D"] = _weighted(d_entries, double_ev, double_var)
-        else:
-            s_entries = _group_by_total(stand_ds[hand_type][uc_idx]).get(total, [])
-            h_entries = _group_by_total(hit_ds[hand_type][uc_idx]).get(total, [])
-            evs = {}
-            if s_entries: evs["S"] = _weighted(s_entries, stand_ev, stand_var)
-            if h_entries: evs["H"] = _weighted(h_entries, hit_ev, hit_var)
-        return evs
-
-    print("\n" + "="*50)
-    print("SUMMARY — Max iterations per table:")
     overall_max = 0
-    for name, df in all_dfs.items():
+    for name, df in tables:
+        path = os.path.join(out_dir, f"{name}_Iterations.csv")
+        df.to_csv(path)
         mx = int(df.values.max())
         overall_max = max(overall_max, mx)
         idx = df.stack().idxmax()
-        hand_str, col = str(idx[0]), idx[1]
-        uc_idx = ["2","3","4","5","6","7","8","9","10","A"].index(col)
+        print(f"{name}: max={mx:>10,}  (Hand={idx[0]} vs {idx[1]})  -> {path}")
+        print(df.to_string())
+        print()
 
-        # Get EVs for diagnostic
-        detail_str = ""
-        if name in ("Hard", "Soft"):
-            ht = name.lower()
-            total_val = int(hand_str) if hand_str.isdigit() else None
-            if total_val:
-                evs = _cell_details(stand_ds, hit_ds, double_ds, ht, total_val, uc_idx, z)
-                ev_parts = "  ".join(f"{k}={v[0]:.4f}(var={v[1]:.3f})" for k,v in sorted(evs.items(), key=lambda x:-x[1][0]))
-                sorted_evs = sorted(evs.items(), key=lambda x:-x[1][0])
-                if len(sorted_evs) >= 2:
-                    delta = sorted_evs[0][1][0] - sorted_evs[1][1][0]
-                    detail_str = f"  delta={delta:.5f}  [{ev_parts}]"
-
-        print(f"  {name:<14}: {mx:>14,}  (Hand={hand_str} vs {col}){detail_str}")
-    print(f"  {'OVERALL':<14}: {overall_max:>14,}")
-    print("="*50)
+    print(f"Overall max: {overall_max:,}")
 
 
 if __name__ == "__main__":
