@@ -1,5 +1,4 @@
 __pycache__
-*.json
 *SIM.csv
 *Iterations.csv
 *RL.csv
