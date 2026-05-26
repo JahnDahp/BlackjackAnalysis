@@ -23,7 +23,7 @@ from typing import Any
 
 
 def worker_dealer(config: dict, data_dir: str) -> dict:
-    from blackjack_calc import Calculator, DealerSettingsObject
+    from calculator.blackjack_calc import Calculator, DealerSettingsObject
     decks, s17, enhc = config["decks"], config["S17"], config["ENHC"]
     base = config["baseSettings"]
     settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc,
@@ -37,7 +37,7 @@ def worker_dealer(config: dict, data_dir: str) -> dict:
 
 
 def worker_double(config: dict, data_dir: str) -> dict:
-    from blackjack_calc import Calculator, DealerSettingsObject
+    from calculator.blackjack_calc import Calculator, DealerSettingsObject
     decks, s17, enhc = config["decks"], config["S17"], config["ENHC"]
     base = config["baseSettings"]
     settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc,
@@ -72,7 +72,7 @@ def worker_double(config: dict, data_dir: str) -> dict:
 
 
 def worker_hit(config: dict, data_dir: str) -> dict:
-    from blackjack_calc import Calculator, DealerSettingsObject
+    from calculator.blackjack_calc import Calculator, DealerSettingsObject
     decks, s17, enhc = config["decks"], config["S17"], config["ENHC"]
     base = config["baseSettings"]
     settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc,
@@ -107,7 +107,7 @@ def worker_hit(config: dict, data_dir: str) -> dict:
 
 
 def worker_split(config: dict, data_dir: str) -> dict:
-    from blackjack_calc import Calculator, DealerSettingsObject
+    from calculator.blackjack_calc import Calculator, DealerSettingsObject
     decks, s17, enhc = config["decks"], config["S17"], config["ENHC"]
     base = config["baseSettings"]
     remove_pair_card: bool = config.get("removePairCard", False)
@@ -145,7 +145,7 @@ def worker_split(config: dict, data_dir: str) -> dict:
 
 
 def worker_stand(config: dict, data_dir: str) -> dict:
-    from blackjack_calc import Calculator, DealerSettingsObject
+    from calculator.blackjack_calc import Calculator, DealerSettingsObject
     decks, s17, enhc = config["decks"], config["S17"], config["ENHC"]
     base = config["baseSettings"]
     settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc,
@@ -186,83 +186,35 @@ def worker_removed(config: dict, data_dir: str) -> dict:
     removed_rank: int = config["removedRank"]
     removed_label = "A" if removed_rank == 1 else str(removed_rank)
     rule = f"{decks}D {'S17' if s17 else 'H17'} {'ENHC' if enhc else 'US'} [removed={removed_label}]"
-    settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc,
-        BJPay=base["BJPay"], DAS=base["DAS"], drawAces=base["drawAces"])
-    instance = Calculator.create(settings, data_dir)
+    settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc, DAS=base["DAS"])
+    instance = Calculator.create(settings)
     exclude = [removed_rank]
-    deck_map = {1:"oneDeck",2:"twoDeck",4:"fourDeck",6:"sixDeck",8:"eightDeck"}
-    s17_key = "S17" if s17 else "H17"
-    peek_key = "enhc" if enhc else "us"
     print(f"Starting removed: {rule}", flush=True)
 
-    def _stand_table(soft: bool, total_range: range) -> list[list[Any]]:
-        table: list[list[Any]] = []
+    def build_table(decision, soft, total_range):
+        table = []
         for up_card in range(1, 11):
             up_label = "A" if up_card == 1 else str(up_card)
-            upcard_results: list[Any] = []
+            upcard_results = []
             for total_target in total_range:
-                print(f"{rule} | stand {'soft' if soft else 'hard'} {total_target} vs {up_label}", flush=True)
+                print(f"{rule} | {decision} {'soft' if soft else 'hard'} {total_target} vs {up_label}", flush=True)
                 for hand in instance.run_hand_sim(total_target, up_card, soft)["allHands"]:
-                    if instance.total(hand["hand"]) == total_target:
-                        upcard_results.append([hand["hand"], hand["totalProb"],
-                            instance.calc_stand(hand["hand"], up_card, exclude)])
+                    if instance.total(hand["hand"]) != total_target: continue
+                    if decision == "double" and len(hand["hand"]) != 2: continue
+                    if decision == "stand": result = instance.calc_stand(hand["hand"], up_card, exclude)
+                    elif decision == "hit": result = instance.calc_hit(hand["hand"], up_card, exclude)
+                    else: result = instance.calc_double(hand["hand"], up_card, exclude)
+                    upcard_results.append([hand["hand"], hand["totalProb"], result])
             table.append(upcard_results)
         return table
 
-    stand_hard = _stand_table(False, range(4, 22))
-    stand_soft = _stand_table(True, range(12, 22))
-    stand_data = {"probs": {deck_map[decks]: {s17_key: {peek_key: {"hard": stand_hard, "soft": stand_soft}}}}}
-    stand_path = os.path.join(data_dir, f"stand_remove_{removed_label}.json")
-    with open(stand_path, "w") as f:
-        json.dump(stand_data, f)
-    print(f"  Wrote {os.path.basename(stand_path)}", flush=True)
-    instance.stand_data = stand_data
-
-    def _hit_table(soft: bool, total_range: range) -> list[list[Any]]:
-        table: list[list[Any]] = []
-        for up_card in range(1, 11):
-            up_label = "A" if up_card == 1 else str(up_card)
-            upcard_results: list[Any] = []
-            for total_target in total_range:
-                print(f"{rule} | hit {'soft' if soft else 'hard'} {total_target} vs {up_label}", flush=True)
-                for hand in instance.run_hand_sim(total_target, up_card, soft)["allHands"]:
-                    if instance.total(hand["hand"]) == total_target:
-                        upcard_results.append([hand["hand"], hand["totalProb"],
-                            instance.calc_hit(hand["hand"], up_card, exclude)])
-            table.append(upcard_results)
-        return table
-
-    hit_hard = _hit_table(False, range(4, 22))
-    hit_soft = _hit_table(True, range(12, 22))
-    hit_data = {"probs": {deck_map[decks]: {s17_key: {peek_key: {"hard": hit_hard, "soft": hit_soft}}}}}
-    hit_path = os.path.join(data_dir, f"hit_remove_{removed_label}.json")
-    with open(hit_path, "w") as f:
-        json.dump(hit_data, f)
-    print(f"  Wrote {os.path.basename(hit_path)}", flush=True)
-
-    def _double_table(soft: bool, total_range: range) -> list[list[Any]]:
-        table: list[list[Any]] = []
-        for up_card in range(1, 11):
-            up_label = "A" if up_card == 1 else str(up_card)
-            upcard_results: list[Any] = []
-            for total_target in total_range:
-                print(f"{rule} | double {'soft' if soft else 'hard'} {total_target} vs {up_label}", flush=True)
-                for hand in instance.run_hand_sim(total_target, up_card, soft)["allHands"]:
-                    if instance.total(hand["hand"]) == total_target and len(hand["hand"]) == 2:
-                        upcard_results.append([hand["hand"], hand["totalProb"],
-                            instance.calc_double(hand["hand"], up_card, exclude)])
-            table.append(upcard_results)
-        return table
-
-    double_hard = _double_table(False, range(4, 22))
-    double_soft = _double_table(True, range(12, 22))
-    double_data = {"probs": {deck_map[decks]: {s17_key: {peek_key: {"hard": double_hard, "soft": double_soft}}}}}
-    double_path = os.path.join(data_dir, f"double_remove_{removed_label}.json")
-    with open(double_path, "w") as f:
-        json.dump(double_data, f)
-    print(f"  Wrote {os.path.basename(double_path)}", flush=True)
     print(f"Done: {rule}", flush=True)
-    return {"decks": decks, "S17": s17, "ENHC": enhc, "removedRank": removed_rank}
+    return {
+        "decks": decks, "S17": s17, "ENHC": enhc, "removedRank": removed_rank,
+        "stand": {"hard": build_table("stand", False, range(4, 22)), "soft": build_table("stand", True, range(12, 22))},
+        "hit":   {"hard": build_table("hit",   False, range(4, 22)), "soft": build_table("hit",   True, range(12, 22))},
+        "double":{"hard": build_table("double",False, range(4, 22)), "soft": build_table("double",True, range(12, 22))},
+    }
 
 
 WORKER_MAP = {
@@ -306,7 +258,22 @@ def assemble_results(decision: str, results: list[dict]) -> dict:
                 "DAS": r["DAS"], "nDAS": r["nDAS"]}
         return {"probs": {deck_name_map[d]: by_decks[d] for d in [1, 2, 4, 6, 8]}}
     elif decision == "removed":
-        return {"removed": True}
+        deck_name_map_r = {1: "oneDeck", 2: "twoDeck", 4: "fourDeck", 6: "sixDeck", 8: "eightDeck"}
+        by_rank = {}
+        for r in results:
+            rank = r["removedRank"]
+            decks, s17, enhc = r["decks"], r["S17"], r["ENHC"]
+            if rank not in by_rank:
+                by_rank[rank] = {"stand": {}, "hit": {}, "double": {}}
+            dk = deck_name_map_r[decks]
+            sk = "S17" if s17 else "H17"
+            pk = "enhc" if enhc else "us"
+            for decision_key in ("stand", "hit", "double"):
+                d = by_rank[rank][decision_key]
+                if dk not in d: d[dk] = {}
+                if sk not in d[dk]: d[dk][sk] = {}
+                d[dk][sk][pk] = r[decision_key]
+        return {"removed": by_rank}
     else:
         for r in results:
             decks, s17, enhc = r["decks"], r["S17"], r["ENHC"]
@@ -377,7 +344,13 @@ def main() -> None:
 
     cache = assemble_results(decision, results)
     if decision == "removed":
-        print("All removed files written by workers.")
+        for removed_rank, tables in cache["removed"].items():
+            removed_label = "A" if removed_rank == 1 else str(removed_rank)
+            for decision_key in ("stand", "hit", "double"):
+                path = os.path.join(data_dir, f"{decision_key}_remove_{removed_label}.json")
+                with open(path, "w") as f:
+                    json.dump({"probs": tables[decision_key]}, f)
+                print(f"Wrote {os.path.basename(path)}")
     else:
         with open(output_file, "w") as f:
             json.dump(cache, f)

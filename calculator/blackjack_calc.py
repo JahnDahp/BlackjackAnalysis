@@ -6,11 +6,10 @@ from dataclasses import dataclass
 
 @dataclass
 class DealerSettingsObject:
-  decks=6
-  S17=True
-  ENHC=False
-  DAS=True
-
+  decks: int = 6
+  S17: bool = True
+  ENHC: bool = False
+  DAS: bool = True
 
 
 # Tracks card counts and total for efficient shoe manipulation
