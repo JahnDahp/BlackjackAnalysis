@@ -1,15 +1,12 @@
 from __future__ import annotations
 import json
 import os
-from dataclasses import dataclass
 
 
-@dataclass
 class DealerSettingsObject:
-  decks: int = 6
-  S17: bool = True
-  ENHC: bool = False
-  DAS: bool = True
+  def __init__(self, decks=6, S17=True, ENHC=False, DAS=True):
+    self.decks=decks; self.S17=S17; self.ENHC=ENHC; self.DAS=DAS
+
 
 
 # Tracks card counts and total for efficient shoe manipulation
@@ -31,10 +28,15 @@ class ShoeCount:
     return instance
 
   def copy(self): return ShoeCount.from_counts(self.counts)
+
   def remove(self, rank): self.counts[rank] -= 1; self.total -= 1
+
   def restore(self, rank): self.counts[rank] += 1; self.total += 1
+
   def count(self, rank): return self.counts[rank]
+
   def prob(self, rank): return self.counts[rank] / self.total if self.total else 0.0
+
   def cache_key(self): return tuple(self.counts)
 
 
@@ -63,11 +65,13 @@ class Calculator:
     self.dealer_settings = dealer_settings
     self.dealer_data=None; self.stand_data=None; self.hit_data=None
     self.double_data=None; self.split_data=None; self.dealer_cache={}
+    self.data_dir=None; self.removed_cache={}
 
   @classmethod
   def create(calculator_class, dealer_settings):
     instance = calculator_class(dealer_settings)
     data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Data")
+    instance.data_dir = data_dir
     def read(filename):
       with open(os.path.join(data_dir, filename), "r") as file:
         return json.load(file)
@@ -78,6 +82,22 @@ class Calculator:
     instance.split_data = read("split.json")
     return instance
 
+
+  def load_removed_data(self, decision, pair_rank):
+    label = "A" if pair_rank == 1 else str(pair_rank)
+    cache_key = (decision, pair_rank)
+    if cache_key not in self.removed_cache:
+      path = os.path.join(self.data_dir, f"{decision}_remove_{label}.json")
+      with open(path, "r") as file:
+        full_data = json.load(file)
+      # Extract only this instance's slice and discard the rest
+      deck_map = {1:"oneDeck",2:"twoDeck",4:"fourDeck",6:"sixDeck",8:"eightDeck"}
+      dk = deck_map[self.dealer_settings.decks]
+      sk = "S17" if self.dealer_settings.S17 else "H17"
+      pk = "enhc" if self.dealer_settings.ENHC else "us"
+      dataset = full_data["probs"][dk][sk][pk]
+      self.removed_cache[cache_key] = {"probs": {dk: {sk: {pk: dataset}}}}
+    return self.removed_cache[cache_key]
 
 
   # Data retrieval helpers
@@ -122,9 +142,9 @@ class Calculator:
 
   def can_double(self, cards): return len(cards) == 2
 
-  def is_blackjack(self, cards, exclude_cards): 
+  def is_blackjack(self, cards, exclude_cards):
     return len(cards) == 2 and self.total(cards) == 21 and exclude_cards is None
-  
+
   def hands_equal(self, a, b): return sorted(a) == sorted(b)
 
   def normalize(self, arr):
@@ -263,12 +283,12 @@ class Calculator:
 
   def calc_stand_ev(self, hand, stand, exclude_cards=None, split=False):
     if self.is_blackjack(hand, exclude_cards) and not split:
-      return (1.0 - stand["DBJ"]) * self.dealer_settings.BJPay
+      return (1.0 - stand["DBJ"]) * 1.5
     return stand["winProb"] - stand["loseProb"] - stand["DBJ"]
 
   def calc_stand_variance(self, hand, stand, exclude_cards=None):
     if self.is_blackjack(hand, exclude_cards):
-      return self.dealer_settings.BJPay ** 2 * stand["DBJ"] * (1.0 - stand["DBJ"])
+      return 1.5 ** 2 * stand["DBJ"] * (1.0 - stand["DBJ"])
     return 1.0 - stand["tieProb"] - self.calc_stand_ev(hand, stand, exclude_cards) ** 2
 
 
@@ -316,14 +336,16 @@ class Calculator:
 
       shoe.remove(rank)
       stand_result = self.stand_from_shoe(new_hand, up_card, shoe)
-      stand_ev = stand_result[0] - stand_result[2] - stand_result[3]
+      s_win = stand_result[0]; s_tie = stand_result[1]
+      s_lose = stand_result[2]; s_dbj = stand_result[3]
+      stand_ev = s_win - s_lose - s_dbj
       hit_result = self.hit_from_shoe(new_hand, up_card, shoe)
       hit_ev = hit_result["winProb"] - hit_result["loseProb"] - hit_result["DBJ"]
       shoe.restore(rank)
 
       if stand_ev >= hit_ev:
-        win += stand_result[0] * rank_prob; tie += stand_result[1] * rank_prob
-        lose += stand_result[2] * rank_prob; dbj += stand_result[3] * rank_prob
+        win += s_win * rank_prob; tie += s_tie * rank_prob
+        lose += s_lose * rank_prob; dbj += s_dbj * rank_prob
       else:
         win += hit_result["winProb"] * rank_prob; tie += hit_result["tieProb"] * rank_prob
         lose += hit_result["loseProb"] * rank_prob; dbj += hit_result["DBJ"] * rank_prob
@@ -376,7 +398,7 @@ class Calculator:
     return self.double_from_shoe(tuple(cards), up_card, shoe)
 
   def calc_double_ev(self, double): return 2.0 * (double["winProb"] - double["loseProb"] - double["DBJ"])
-  
+
   def calc_double_variance(self, double): return 4.0 * (1.0 - double["tieProb"]) - self.calc_double_ev(double) ** 2
 
 
@@ -405,7 +427,30 @@ class Calculator:
       shoe.remove(rank)
       hand_ranks = (pair_rank, rank)
 
-      if pair_rank == 1 and not self.dealer_settings.drawAces:
+      hand_list = list(hand_ranks)
+      if remove_pair_card:
+        # Use precomputed removed JSONs for instant lookup
+        stand_probs = self.get_data(hand_list, up_card, self.load_removed_data("stand", pair_rank))
+        if pair_rank == 1:
+          hand_probs["noDouble"]["winProb"] += stand_probs["winProb"] * rank_prob; hand_probs["noDouble"]["tieProb"] += stand_probs["tieProb"] * rank_prob
+          hand_probs["noDouble"]["loseProb"] += stand_probs["loseProb"] * rank_prob; hand_probs["noDouble"]["DBJ"] += stand_probs["DBJ"] * rank_prob
+        else:
+          hit_probs = self.get_data(hand_list, up_card, self.load_removed_data("hit", pair_rank))
+          double_probs = self.get_data(hand_list, up_card, self.load_removed_data("double", pair_rank))
+          stand_ev = self.calc_stand_ev(hand_list, stand_probs)
+          hit_ev = self.calc_hit_ev(hit_probs)
+          double_ev = self.calc_double_ev(double_probs)
+          max_ev = max(stand_ev, hit_ev, double_ev) if self.dealer_settings.DAS else max(stand_ev, hit_ev)
+          if self.dealer_settings.DAS and max_ev == double_ev:
+            hand_probs["double"]["winProb"] += double_probs["winProb"] * rank_prob; hand_probs["double"]["tieProb"] += double_probs["tieProb"] * rank_prob
+            hand_probs["double"]["loseProb"] += double_probs["loseProb"] * rank_prob; hand_probs["double"]["DBJ"] += double_probs["DBJ"] * rank_prob
+          elif max_ev == hit_ev:
+            hand_probs["noDouble"]["winProb"] += hit_probs["winProb"] * rank_prob; hand_probs["noDouble"]["tieProb"] += hit_probs["tieProb"] * rank_prob
+            hand_probs["noDouble"]["loseProb"] += hit_probs["loseProb"] * rank_prob; hand_probs["noDouble"]["DBJ"] += hit_probs["DBJ"] * rank_prob
+          else:
+            hand_probs["noDouble"]["winProb"] += stand_probs["winProb"] * rank_prob; hand_probs["noDouble"]["tieProb"] += stand_probs["tieProb"] * rank_prob
+            hand_probs["noDouble"]["loseProb"] += stand_probs["loseProb"] * rank_prob; hand_probs["noDouble"]["DBJ"] += stand_probs["DBJ"] * rank_prob
+      elif pair_rank == 1:
         # Forced stand on split aces
         stand_result = self.stand_from_shoe(hand_ranks, up_card, shoe)
         hand_probs["noDouble"]["winProb"] += stand_result[0] * rank_prob; hand_probs["noDouble"]["tieProb"] += stand_result[1] * rank_prob
@@ -548,42 +593,3 @@ class Calculator:
     total = sum(next_card_probs)
     if total > 0: next_card_probs = [prob / total for prob in next_card_probs]
     return {"allHands": all_hands, "nextCardProbs": next_card_probs}
-
-
-
-  # Legacy API
-  def dealer_outcome_generator(self, dealer_hand, outcomes, hand_probs, probabilities, shoe, player_bj):
-    if player_bj and len(dealer_hand) >= 2:
-      outcomes.append(dealer_hand); probabilities.append(hand_probs); return
-    hand_total = self.total(dealer_hand)
-    soft17 = (hand_total == 17 and self.is_soft(dealer_hand))
-    if hand_total > 17 or (hand_total == 17 and (not soft17 or self.dealer_settings.S17)):
-      outcomes.append(dealer_hand); probabilities.append(hand_probs); return
-    for rank in range(1, 11):
-      card_index = -1
-      for index in range(len(shoe)):
-        if shoe[index] == rank: card_index = index; break
-      if card_index == -1: continue
-      count = sum(1 for card in shoe if card == rank)
-      rank_prob = count / len(shoe)
-      new_shoe = shoe[:card_index] + shoe[card_index + 1:]
-      self.dealer_outcome_generator(dealer_hand + [rank], outcomes, hand_probs + [rank_prob], probabilities, new_shoe, player_bj)
-
-  def get_dealer_totals(self, outcomes): return [self.total(hand) for hand in outcomes]
-
-  def get_total_probabilities(self, probabilities):
-    total_probs = [1.0] * len(probabilities)
-    for index in range(len(probabilities)):
-      for prob in probabilities[index]: total_probs[index] *= prob
-    return total_probs
-
-  def get_dealer_outcome_counts(self, outcomes, probabilities, normalize=False):
-    totals = self.get_dealer_totals(outcomes)
-    counts = [0.0] * 7
-    for index in range(len(totals)):
-      hand_total = totals[index]
-      if 17 <= hand_total <= 20: counts[hand_total - 16] += probabilities[index]
-      elif hand_total == 21: counts[6 if len(outcomes[index]) == 2 else 5] += probabilities[index]
-      else: counts[0] += probabilities[index]
-    if not self.dealer_settings.ENHC: counts[6] = 0.0
-    return self.normalize(counts) if normalize else counts

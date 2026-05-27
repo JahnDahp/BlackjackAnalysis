@@ -23,12 +23,11 @@ from typing import Any
 
 
 def worker_dealer(config: dict, data_dir: str) -> dict:
-    from calculator.blackjack_calc import Calculator, DealerSettingsObject
+    from blackjack_calc import Calculator, DealerSettingsObject
     decks, s17, enhc = config["decks"], config["S17"], config["ENHC"]
     base = config["baseSettings"]
-    settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc,
-        BJPay=base["BJPay"], DAS=base["DAS"], drawAces=base["drawAces"])
-    instance = Calculator.create(settings, data_dir)
+    settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc, DAS=base["DAS"])
+    instance = Calculator.create(settings)
     rule = f"{decks}D {'S17' if s17 else 'H17'} {'ENHC' if enhc else 'US'}"
     print(f"Starting dealer: {rule}", flush=True)
     result = instance.run_dealer_sim(normalize=True)
@@ -37,12 +36,11 @@ def worker_dealer(config: dict, data_dir: str) -> dict:
 
 
 def worker_double(config: dict, data_dir: str) -> dict:
-    from calculator.blackjack_calc import Calculator, DealerSettingsObject
+    from blackjack_calc import Calculator, DealerSettingsObject
     decks, s17, enhc = config["decks"], config["S17"], config["ENHC"]
     base = config["baseSettings"]
-    settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc,
-        BJPay=base["BJPay"], DAS=base["DAS"], drawAces=base["drawAces"])
-    instance = Calculator.create(settings, data_dir)
+    settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc, DAS=base["DAS"])
+    instance = Calculator.create(settings)
     rule = f"{decks}D {'S17' if s17 else 'H17'} {'ENHC' if enhc else 'US'}"
     print(f"Starting double: {rule}", flush=True)
     hard: list[list[Any]] = []
@@ -72,12 +70,11 @@ def worker_double(config: dict, data_dir: str) -> dict:
 
 
 def worker_hit(config: dict, data_dir: str) -> dict:
-    from calculator.blackjack_calc import Calculator, DealerSettingsObject
+    from blackjack_calc import Calculator, DealerSettingsObject
     decks, s17, enhc = config["decks"], config["S17"], config["ENHC"]
     base = config["baseSettings"]
-    settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc,
-        BJPay=base["BJPay"], DAS=base["DAS"], drawAces=base["drawAces"])
-    instance = Calculator.create(settings, data_dir)
+    settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc, DAS=base["DAS"])
+    instance = Calculator.create(settings)
     rule = f"{decks}D {'S17' if s17 else 'H17'} {'ENHC' if enhc else 'US'}"
     print(f"Starting hit: {rule}", flush=True)
     hard: list[list[Any]] = []
@@ -107,16 +104,15 @@ def worker_hit(config: dict, data_dir: str) -> dict:
 
 
 def worker_split(config: dict, data_dir: str) -> dict:
-    from calculator.blackjack_calc import Calculator, DealerSettingsObject
+    from blackjack_calc import Calculator, DealerSettingsObject
     decks, s17, enhc = config["decks"], config["S17"], config["ENHC"]
     base = config["baseSettings"]
     remove_pair_card: bool = config.get("removePairCard", False)
     rule = f"{decks}D {'S17' if s17 else 'H17'} {'ENHC' if enhc else 'US'}"
     if remove_pair_card:
         rule += " [remove-pair-card]"
-    settings_das = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc,
-        BJPay=base["BJPay"], DAS=True, drawAces=base["drawAces"])
-    instance_das = Calculator.create(settings_das, data_dir)
+    settings_das = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc, DAS=True)
+    instance_das = Calculator.create(settings_das)
     print(f"Starting DAS: {rule}", flush=True)
     DAS_results: list[list[Any]] = []
     for up_card in range(1, 11):
@@ -127,9 +123,8 @@ def worker_split(config: dict, data_dir: str) -> dict:
             ev = instance_das.calc_split([pair_val, pair_val], up_card, remove_pair_card)
             upcard_results.append([[pair_val, pair_val], ev])
         DAS_results.append(upcard_results)
-    settings_ndas = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc,
-        BJPay=base["BJPay"], DAS=False, drawAces=base["drawAces"])
-    instance_ndas = Calculator.create(settings_ndas, data_dir)
+    settings_ndas = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc, DAS=False)
+    instance_ndas = Calculator.create(settings_ndas)
     print(f"Starting nDAS: {rule}", flush=True)
     nDAS_results: list[list[Any]] = []
     for up_card in range(1, 11):
@@ -145,12 +140,11 @@ def worker_split(config: dict, data_dir: str) -> dict:
 
 
 def worker_stand(config: dict, data_dir: str) -> dict:
-    from calculator.blackjack_calc import Calculator, DealerSettingsObject
+    from blackjack_calc import Calculator, DealerSettingsObject
     decks, s17, enhc = config["decks"], config["S17"], config["ENHC"]
     base = config["baseSettings"]
-    settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc,
-        BJPay=base["BJPay"], DAS=base["DAS"], drawAces=base["drawAces"])
-    instance = Calculator.create(settings, data_dir)
+    settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc, DAS=base["DAS"])
+    instance = Calculator.create(settings)
     rule = f"{decks}D {'S17' if s17 else 'H17'} {'ENHC' if enhc else 'US'}"
     print(f"Starting stand: {rule}", flush=True)
     hard: list[list[Any]] = []
@@ -188,7 +182,7 @@ def worker_removed(config: dict, data_dir: str) -> dict:
     rule = f"{decks}D {'S17' if s17 else 'H17'} {'ENHC' if enhc else 'US'} [removed={removed_label}]"
     settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc, DAS=base["DAS"])
     instance = Calculator.create(settings)
-    exclude = [removed_rank]
+    exclude = [removed_rank, removed_rank]
     print(f"Starting removed: {rule}", flush=True)
 
     def build_table(decision, soft, total_range):
@@ -208,12 +202,27 @@ def worker_removed(config: dict, data_dir: str) -> dict:
             table.append(upcard_results)
         return table
 
+    deck_map = {1:"oneDeck",2:"twoDeck",4:"fourDeck",6:"sixDeck",8:"eightDeck"}
+    s17_key = "S17" if s17 else "H17"
+    peek_key = "enhc" if enhc else "us"
+
+    stand_hard = build_table("stand", False, range(4, 22))
+    stand_soft = build_table("stand", True, range(12, 22))
+
+    # Load removed stand data into instance so calc_hit uses it for stand lookups
+    instance.stand_data = {"probs": {deck_map[decks]: {s17_key: {peek_key: {"hard": stand_hard, "soft": stand_soft}}}}}
+
+    hit_hard = build_table("hit", False, range(4, 22))
+    hit_soft = build_table("hit", True, range(12, 22))
+    double_hard = build_table("double", False, range(4, 22))
+    double_soft = build_table("double", True, range(12, 22))
+
     print(f"Done: {rule}", flush=True)
     return {
         "decks": decks, "S17": s17, "ENHC": enhc, "removedRank": removed_rank,
-        "stand": {"hard": build_table("stand", False, range(4, 22)), "soft": build_table("stand", True, range(12, 22))},
-        "hit":   {"hard": build_table("hit",   False, range(4, 22)), "soft": build_table("hit",   True, range(12, 22))},
-        "double":{"hard": build_table("double",False, range(4, 22)), "soft": build_table("double",True, range(12, 22))},
+        "stand": {"hard": stand_hard, "soft": stand_soft},
+        "hit":   {"hard": hit_hard,   "soft": hit_soft},
+        "double":{"hard": double_hard,"soft": double_soft},
     }
 
 
