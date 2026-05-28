@@ -107,10 +107,7 @@ def worker_split(config: dict, data_dir: str) -> dict:
     from blackjack_calc import Calculator, DealerSettingsObject
     decks, s17, enhc = config["decks"], config["S17"], config["ENHC"]
     base = config["baseSettings"]
-    remove_pair_card: bool = config.get("removePairCard", False)
     rule = f"{decks}D {'S17' if s17 else 'H17'} {'ENHC' if enhc else 'US'}"
-    if remove_pair_card:
-        rule += " [remove-pair-card]"
     settings_das = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc, DAS=True)
     instance_das = Calculator.create(settings_das)
     print(f"Starting DAS: {rule}", flush=True)
@@ -120,7 +117,7 @@ def worker_split(config: dict, data_dir: str) -> dict:
         print(f"{rule} | DAS upcard {up_label}", flush=True)
         upcard_results: list[Any] = []
         for pair_val in range(1, 11):
-            ev = instance_das.calc_split([pair_val, pair_val], up_card, remove_pair_card)
+            ev = instance_das.calc_split([pair_val, pair_val], up_card)
             upcard_results.append([[pair_val, pair_val], ev])
         DAS_results.append(upcard_results)
     settings_ndas = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc, DAS=False)
@@ -132,7 +129,7 @@ def worker_split(config: dict, data_dir: str) -> dict:
         print(f"{rule} | nDAS upcard {up_label}", flush=True)
         upcard_results = []
         for pair_val in range(1, 11):
-            ev = instance_ndas.calc_split([pair_val, pair_val], up_card, remove_pair_card)
+            ev = instance_ndas.calc_split([pair_val, pair_val], up_card)
             upcard_results.append([[pair_val, pair_val], ev])
         nDAS_results.append(upcard_results)
     print(f"Done: {rule}", flush=True)
@@ -173,66 +170,12 @@ def worker_stand(config: dict, data_dir: str) -> dict:
     return {"decks": decks, "S17": s17, "ENHC": enhc, "hard": hard, "soft": soft}
 
 
-def worker_removed(config: dict, data_dir: str) -> dict:
-    from blackjack_calc import Calculator, DealerSettingsObject
-    decks, s17, enhc = config["decks"], config["S17"], config["ENHC"]
-    base = config["baseSettings"]
-    removed_rank: int = config["removedRank"]
-    removed_label = "A" if removed_rank == 1 else str(removed_rank)
-    rule = f"{decks}D {'S17' if s17 else 'H17'} {'ENHC' if enhc else 'US'} [removed={removed_label}]"
-    settings = DealerSettingsObject(decks=decks, S17=s17, ENHC=enhc, DAS=base["DAS"])
-    instance = Calculator.create(settings)
-    exclude = [removed_rank, removed_rank]
-    print(f"Starting removed: {rule}", flush=True)
-
-    def build_table(decision, soft, total_range):
-        table = []
-        for up_card in range(1, 11):
-            up_label = "A" if up_card == 1 else str(up_card)
-            upcard_results = []
-            for total_target in total_range:
-                print(f"{rule} | {decision} {'soft' if soft else 'hard'} {total_target} vs {up_label}", flush=True)
-                for hand in instance.run_hand_sim(total_target, up_card, soft)["allHands"]:
-                    if instance.total(hand["hand"]) != total_target: continue
-                    if decision == "double" and len(hand["hand"]) != 2: continue
-                    if decision == "stand": result = instance.calc_stand(hand["hand"], up_card, exclude)
-                    elif decision == "hit": result = instance.calc_hit(hand["hand"], up_card, exclude)
-                    else: result = instance.calc_double(hand["hand"], up_card, exclude)
-                    upcard_results.append([hand["hand"], hand["totalProb"], result])
-            table.append(upcard_results)
-        return table
-
-    deck_map = {1:"oneDeck",2:"twoDeck",4:"fourDeck",6:"sixDeck",8:"eightDeck"}
-    s17_key = "S17" if s17 else "H17"
-    peek_key = "enhc" if enhc else "us"
-
-    stand_hard = build_table("stand", False, range(4, 22))
-    stand_soft = build_table("stand", True, range(12, 22))
-
-    # Load removed stand data into instance so calc_hit uses it for stand lookups
-    instance.stand_data = {"probs": {deck_map[decks]: {s17_key: {peek_key: {"hard": stand_hard, "soft": stand_soft}}}}}
-
-    hit_hard = build_table("hit", False, range(4, 22))
-    hit_soft = build_table("hit", True, range(12, 22))
-    double_hard = build_table("double", False, range(4, 22))
-    double_soft = build_table("double", True, range(12, 22))
-
-    print(f"Done: {rule}", flush=True)
-    return {
-        "decks": decks, "S17": s17, "ENHC": enhc, "removedRank": removed_rank,
-        "stand": {"hard": stand_hard, "soft": stand_soft},
-        "hit":   {"hard": hit_hard,   "soft": hit_soft},
-        "double":{"hard": double_hard,"soft": double_soft},
-    }
-
-
 WORKER_MAP = {
     "dealer":  worker_dealer,
     "double":  worker_double,
     "hit":     worker_hit,
     "split":   worker_split,
     "stand":   worker_stand,
-    "removed": worker_removed,
 }
 
 
@@ -266,23 +209,6 @@ def assemble_results(decision: str, results: list[dict]) -> dict:
             by_decks[decks]["S17" if s17 else "H17"]["enhc" if enhc else "us"] = {
                 "DAS": r["DAS"], "nDAS": r["nDAS"]}
         return {"probs": {deck_name_map[d]: by_decks[d] for d in [1, 2, 4, 6, 8]}}
-    elif decision == "removed":
-        deck_name_map_r = {1: "oneDeck", 2: "twoDeck", 4: "fourDeck", 6: "sixDeck", 8: "eightDeck"}
-        by_rank = {}
-        for r in results:
-            rank = r["removedRank"]
-            decks, s17, enhc = r["decks"], r["S17"], r["ENHC"]
-            if rank not in by_rank:
-                by_rank[rank] = {"stand": {}, "hit": {}, "double": {}}
-            dk = deck_name_map_r[decks]
-            sk = "S17" if s17 else "H17"
-            pk = "enhc" if enhc else "us"
-            for decision_key in ("stand", "hit", "double"):
-                d = by_rank[rank][decision_key]
-                if dk not in d: d[dk] = {}
-                if sk not in d[dk]: d[dk][sk] = {}
-                d[dk][sk][pk] = r[decision_key]
-        return {"removed": by_rank}
     else:
         for r in results:
             decks, s17, enhc = r["decks"], r["S17"], r["ENHC"]
@@ -296,7 +222,6 @@ def assemble_results(decision: str, results: list[dict]) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("decision", choices=list(WORKER_MAP.keys()))
-    parser.add_argument("--remove-pair-card", action="store_true", default=False)
     parser.add_argument("--data-dir", default="../Data")
     parser.add_argument("--workers", type=int, default=None)
     args = parser.parse_args()
@@ -323,19 +248,11 @@ def main() -> None:
     base_settings = {"decks": 6, "S17": True, "ENHC": False, "BJPay": 1.5, "DAS": True, "drawAces": False, "doubles": [9, 10, 11]}
 
     configs: list[dict] = []
-    if decision == "removed":
-        for removed_rank in range(1, 11):
-            for decks in [1, 2, 4, 6, 8]:
-                for s17 in [False, True]:
-                    for enhc in [False, True]:
-                        configs.append({"decks": decks, "S17": s17, "ENHC": enhc,
-                            "baseSettings": base_settings, "removedRank": removed_rank})
-    else:
-        for decks in [1, 2, 4, 6, 8]:
-            for s17 in [False, True]:
-                for enhc in [False, True]:
-                    configs.append({"decks": decks, "S17": s17, "ENHC": enhc,
-                        "baseSettings": base_settings, "removePairCard": remove_pair_card})
+    for decks in [1, 2, 4, 6, 8]:
+        for s17 in [False, True]:
+            for enhc in [False, True]:
+                configs.append({"decks": decks, "S17": s17, "ENHC": enhc,
+                    "baseSettings": base_settings})
 
     cpu_count = os.cpu_count() or 1
     max_workers = min(args.workers if args.workers else max(1, cpu_count - 4), 20)
@@ -352,18 +269,9 @@ def main() -> None:
             sys.exit(1)
 
     cache = assemble_results(decision, results)
-    if decision == "removed":
-        for removed_rank, tables in cache["removed"].items():
-            removed_label = "A" if removed_rank == 1 else str(removed_rank)
-            for decision_key in ("stand", "hit", "double"):
-                path = os.path.join(data_dir, f"{decision_key}_remove_{removed_label}.json")
-                with open(path, "w") as f:
-                    json.dump({"probs": tables[decision_key]}, f)
-                print(f"Wrote {os.path.basename(path)}")
-    else:
-        with open(output_file, "w") as f:
-            json.dump(cache, f)
-        print(f"Wrote {os.path.basename(output_file)}")
+    with open(output_file, "w") as f:
+        json.dump(cache, f)
+    print(f"Wrote {os.path.basename(output_file)}")
 
 
 if __name__ == "__main__":

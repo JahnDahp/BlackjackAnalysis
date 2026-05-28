@@ -65,13 +65,11 @@ class Calculator:
     self.dealer_settings = dealer_settings
     self.dealer_data=None; self.stand_data=None; self.hit_data=None
     self.double_data=None; self.split_data=None; self.dealer_cache={}
-    self.data_dir=None; self.removed_cache={}
 
   @classmethod
   def create(calculator_class, dealer_settings):
     instance = calculator_class(dealer_settings)
     data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Data")
-    instance.data_dir = data_dir
     def read(filename):
       with open(os.path.join(data_dir, filename), "r") as file:
         return json.load(file)
@@ -82,22 +80,6 @@ class Calculator:
     instance.split_data = read("split.json")
     return instance
 
-
-  def load_removed_data(self, decision, pair_rank):
-    label = "A" if pair_rank == 1 else str(pair_rank)
-    cache_key = (decision, pair_rank)
-    if cache_key not in self.removed_cache:
-      path = os.path.join(self.data_dir, f"{decision}_remove_{label}.json")
-      with open(path, "r") as file:
-        full_data = json.load(file)
-      # Extract only this instance's slice and discard the rest
-      deck_map = {1:"oneDeck",2:"twoDeck",4:"fourDeck",6:"sixDeck",8:"eightDeck"}
-      dk = deck_map[self.dealer_settings.decks]
-      sk = "S17" if self.dealer_settings.S17 else "H17"
-      pk = "enhc" if self.dealer_settings.ENHC else "us"
-      dataset = full_data["probs"][dk][sk][pk]
-      self.removed_cache[cache_key] = {"probs": {dk: {sk: {pk: dataset}}}}
-    return self.removed_cache[cache_key]
 
 
   # Data retrieval helpers
@@ -404,7 +386,7 @@ class Calculator:
 
 
   # Split EV
-  def calc_split(self, cards, up_card, remove_pair_card=False, exclude_cards=None):
+  def calc_split(self, cards, up_card, exclude_cards=None):
     empty = {"winProb": 0.0, "tieProb": 0.0, "loseProb": 0.0, "DBJ": 0.0}
     hand_probs = {"noDouble": dict(empty), "double": dict(empty)}
     if len(cards) != 2 or cards[0] != cards[1]: return hand_probs
@@ -416,7 +398,6 @@ class Calculator:
     for card in cards: shoe.remove(card)
     shoe.remove(up_card)
     pair_rank = cards[0]
-    if remove_pair_card: shoe.remove(pair_rank)
 
     shoe_total = shoe.total
     next_card_probs = [shoe.count(rank) / shoe_total if shoe_total else 0.0 for rank in range(1, 11)]
@@ -427,30 +408,7 @@ class Calculator:
       shoe.remove(rank)
       hand_ranks = (pair_rank, rank)
 
-      hand_list = list(hand_ranks)
-      if remove_pair_card:
-        # Use precomputed removed JSONs for instant lookup
-        stand_probs = self.get_data(hand_list, up_card, self.load_removed_data("stand", pair_rank))
-        if pair_rank == 1:
-          hand_probs["noDouble"]["winProb"] += stand_probs["winProb"] * rank_prob; hand_probs["noDouble"]["tieProb"] += stand_probs["tieProb"] * rank_prob
-          hand_probs["noDouble"]["loseProb"] += stand_probs["loseProb"] * rank_prob; hand_probs["noDouble"]["DBJ"] += stand_probs["DBJ"] * rank_prob
-        else:
-          hit_probs = self.get_data(hand_list, up_card, self.load_removed_data("hit", pair_rank))
-          double_probs = self.get_data(hand_list, up_card, self.load_removed_data("double", pair_rank))
-          stand_ev = self.calc_stand_ev(hand_list, stand_probs)
-          hit_ev = self.calc_hit_ev(hit_probs)
-          double_ev = self.calc_double_ev(double_probs)
-          max_ev = max(stand_ev, hit_ev, double_ev) if self.dealer_settings.DAS else max(stand_ev, hit_ev)
-          if self.dealer_settings.DAS and max_ev == double_ev:
-            hand_probs["double"]["winProb"] += double_probs["winProb"] * rank_prob; hand_probs["double"]["tieProb"] += double_probs["tieProb"] * rank_prob
-            hand_probs["double"]["loseProb"] += double_probs["loseProb"] * rank_prob; hand_probs["double"]["DBJ"] += double_probs["DBJ"] * rank_prob
-          elif max_ev == hit_ev:
-            hand_probs["noDouble"]["winProb"] += hit_probs["winProb"] * rank_prob; hand_probs["noDouble"]["tieProb"] += hit_probs["tieProb"] * rank_prob
-            hand_probs["noDouble"]["loseProb"] += hit_probs["loseProb"] * rank_prob; hand_probs["noDouble"]["DBJ"] += hit_probs["DBJ"] * rank_prob
-          else:
-            hand_probs["noDouble"]["winProb"] += stand_probs["winProb"] * rank_prob; hand_probs["noDouble"]["tieProb"] += stand_probs["tieProb"] * rank_prob
-            hand_probs["noDouble"]["loseProb"] += stand_probs["loseProb"] * rank_prob; hand_probs["noDouble"]["DBJ"] += stand_probs["DBJ"] * rank_prob
-      elif pair_rank == 1:
+      if pair_rank == 1:
         # Forced stand on split aces
         stand_result = self.stand_from_shoe(hand_ranks, up_card, shoe)
         hand_probs["noDouble"]["winProb"] += stand_result[0] * rank_prob; hand_probs["noDouble"]["tieProb"] += stand_result[1] * rank_prob
@@ -482,13 +440,13 @@ class Calculator:
     return hand_probs
 
   def calc_split_ev(self, split):
-    w2=split["double"]["winProb"]; t2=split["double"]["tieProb"]; l2=split["double"]["loseProb"]
+    w2=split["double"]["winProb"]; t2=split["double"]["tieProb"]; l2=split["double"]["loseProb"]; d2=split["double"]["DBJ"]
     w=split["noDouble"]["winProb"]; t=split["noDouble"]["tieProb"]; l=split["noDouble"]["loseProb"]; d=split["noDouble"]["DBJ"]
     if self.dealer_settings.DAS:
       win4=w2**2; win3=2*w2*w; win2=2*w2*(t+t2)+w**2; win1=2*w2*l+2*w*(t+t2)
       lose1=2*l2*w+2*l*(t+t2); lose2=2*l2*(t+t2)+l**2; lose3=2*l2*l; lose4=l2**2
-      return 4*win4+3*win3+2*win2+win1-d-lose1-2*lose2-3*lose3-4*lose4
-    return 2*w**2+2*w*t-d-2*l*t-2*l**2
+      return 4*win4+3*win3+2*win2+win1-2*d-4*d2-lose1-2*lose2-3*lose3-4*lose4
+    return 2*w**2+2*w*t-2*d-2*l*t-2*l**2
 
   def calc_split_variance(self, split):
     w2=split["double"]["winProb"]; t2=split["double"]["tieProb"]; l2=split["double"]["loseProb"]
