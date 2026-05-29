@@ -20,7 +20,9 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_here = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _here)
+sys.path.insert(0, os.path.join(_here, ".."))
 
 import matplotlib
 matplotlib.use("Agg")
@@ -30,7 +32,7 @@ import numpy as np
 
 from blackjack_sim import (
     _strategy_folder, _load_strategy_csv,
-    _rule_prefix, blackjack_simulator,
+    _rule_prefix, Simulator as blackjack_simulator,
 )
 from blackjack import DealerSettingsObject
 
@@ -83,7 +85,7 @@ def main() -> None:
     parser.add_argument("--workers",      type=int,   default=None)
     parser.add_argument("--matrices-dir", dest="matrices_dir",
                         default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                             "..", "VerifiedStrategyMatrices"))
+                                             "..", "strategy_matrices"))
     parser.add_argument("--output", default=os.path.join(
                         os.path.dirname(os.path.abspath(__file__)), "sim_convergence_plot.png"))
     args = parser.parse_args()
@@ -191,7 +193,8 @@ def main() -> None:
     ax.set_title(f"Monte Carlo Simulator Convergence\n{rule_str}",
                  fontsize=15, color="#ffffff", pad=18, fontweight="bold")
 
-    tick_labels = ["100", "1K", "10K", "100K", "500K", "1M"]
+    def _fmt(n): return f"{n/1_000_000:.3g}M" if n >= 1_000_000 else (f"{n//1000}K" if n >= 1000 else str(n))
+    tick_labels = [_fmt(n) for n in ITERATION_COUNTS]
     completed = ITERATION_COUNTS[:len(error_counts)]
     completed_labels = tick_labels[:len(error_counts)]
     ax.set_xticks(completed)

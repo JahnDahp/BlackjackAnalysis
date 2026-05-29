@@ -2,14 +2,7 @@
 Run.py
 
 Usage:
-    python Run.py <hit|double|stand|dealer|split|removed> [--remove-pair-card] [--data-dir PATH] [--workers N]
-
-The --remove-pair-card flag only applies to the split decision.
-
-The 'removed' decision generates hit_removed.json, stand_removed.json, and
-double_removed.json — each containing precomputed probs for every rule config
-with one extra card of each rank (1-10) removed from the shoe. Used to make
-split --remove-pair-card near-instant via lookup instead of recursion.
+    python Run.py <hit|double|stand|dealer|split> [--data-dir PATH] [--workers N]
 """
 
 from __future__ import annotations
@@ -20,6 +13,8 @@ import multiprocessing
 import os
 import sys
 from typing import Any
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
 def worker_dealer(config: dict, data_dir: str) -> dict:
@@ -227,11 +222,7 @@ def main() -> None:
     args = parser.parse_args()
 
     decision = args.decision
-    remove_pair_card = args.remove_pair_card
     worker_fn = WORKER_MAP[decision]
-
-    if remove_pair_card and decision != "split":
-        print("Warning: --remove-pair-card has no effect for non-split decisions.", flush=True)
 
     if args.data_dir:
         data_dir = os.path.normpath(os.path.abspath(args.data_dir))

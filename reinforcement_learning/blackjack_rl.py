@@ -45,6 +45,10 @@ class QTable:
         self.hard  = _empty_table(18)
         self.soft  = _empty_table(9)    # totals 13-21
         self.pairs = _empty_table(10)   # DAS or nDAS depending on rules
+        # Visit counts per (state, upcard, action) — used for per-cell alpha = 1/n
+        self.hard_visits  = [[[0] * _N_ACTIONS for _ in range(10)] for _ in range(18)]
+        self.soft_visits  = [[[0] * _N_ACTIONS for _ in range(10)] for _ in range(9)]
+        self.pairs_visits = [[[0] * _N_ACTIONS for _ in range(10)] for _ in range(10)]
         self._dirty     = True
         self._hard_dbl   = [_NONE] * 22
         self._hard_nodbl = [_NONE] * 22
@@ -62,6 +66,11 @@ class QTable:
         if table == "soft": return self.soft
         return self.pairs
 
+    def _visits_tbl(self, table: str) -> list:
+        if table == "hard": return self.hard_visits
+        if table == "soft": return self.soft_visits
+        return self.pairs_visits
+
 
     def _actions(self, table: str) -> list[int]:
         if table == "pairs_das":  return PAIR_DAS_ACTIONS
@@ -75,10 +84,13 @@ class QTable:
         return max(self._actions(table), key=lambda a: q[a])
 
     def update(self, table: str, key: int, upcard: int,
-               action: int, reward: float, alpha: float = 0.1) -> None:
+               action: int, reward: float) -> None:
         row = self._row(table, key)
         col = upcard - 1
-        tbl = self._tbl(table)
+        tbl   = self._tbl(table)
+        visits = self._visits_tbl(table)
+        visits[row][col][action] += 1
+        alpha = 1.0 / visits[row][col][action]
         tbl[row][col][action] += alpha * (reward - tbl[row][col][action])
         self._dirty = True
 
@@ -136,15 +148,14 @@ class QTable:
 def _strategy_folder(base_dir: str, decks: int, s17: bool, enhc: bool, das: bool) -> Path:
     deck_str = "1D" if decks == 1 else ("2D" if decks == 2 else "MD")
     return (Path(base_dir) / deck_str / ("S17" if s17 else "H17")
-            / ("ENHC" if enhc else "US") / ("DAS" if das else "NDAS"))
+            / ("ENHC" if enhc else "US"))
 
 
 def _output_folder(base_dir: str) -> Path:
     from datetime import datetime
     now = datetime.now()
     stamp = now.strftime(f"RL_{now.month}_{now.day}_{now.year}_%H-%M")
-    return Path(base_dir) / "Outputs" / "RL" / stamp
-
+    return Path(base_dir) / "outputs" / "outputs_rl" / stamp
 
 def _rule_prefix(decks: int, s17: bool, enhc: bool, das: bool | None = None) -> str:
     deck_str = "1D" if decks == 1 else ("2D" if decks == 2 else "MD")
@@ -240,7 +251,6 @@ def _run_episode(
     upcard: int,
     hand: list[int],
     epsilon: float,
-    alpha: float,
     hard_dbl: list[int],
     soft_dbl: list[int],
 ) -> None:
@@ -260,17 +270,19 @@ def _run_episode(
 
 
 
-    q.update(table, key, upcard, action, gain, alpha)
+    q.update(table, key, upcard, action, gain)
 
 
 # ---------------------------------------------------------------------------
-# Training worker
+# Training
 # ---------------------------------------------------------------------------
 
-def _train_worker(args: tuple) -> tuple:
-    (rules, n_episodes, epsilon_start, epsilon_end,
-     alpha_start, alpha_end, worker_id) = args
-
+def train(
+    rules: DealerSettingsObject,
+    n_episodes: int = 50_000_000,
+    epsilon_start: float = 0.1,
+    epsilon_end: float = 0.01,
+) -> QTable:
     sim = BlackjackSimulator(rules)
     q   = QTable(das=rules.DAS)
     upcard_weights = _upcard_weights(rules.decks)
@@ -281,71 +293,19 @@ def _train_worker(args: tuple) -> tuple:
 
     for ep in range(1, n_episodes + 1):
         epsilon = epsilon_start + (epsilon_end - epsilon_start) * ep / n_episodes
-        alpha   = alpha_start   + (alpha_end   - alpha_start)   * ep / n_episodes
         upcard  = _sample_upcard(upcard_weights)
         hand    = _sample_hand(rules.decks, upcard)
 
-        _run_episode(sim, q, upcard, hand, epsilon, alpha,
-                     hard_dbl, soft_dbl)
+        _run_episode(sim, q, upcard, hand, epsilon, hard_dbl, soft_dbl)
 
         if ep % rebuild_every == 0:
             hard_dbl, soft_dbl, _, _ = q.get_strategy_arrays()
 
         if ep % log_every == 0:
             pct = 100 * ep // n_episodes
-            print(f"  [worker {worker_id}] {ep:>10,} / {n_episodes:,}  ({pct:3d}%)  "
-                  f"eps={epsilon:.3f}  alpha={alpha:.4f}", flush=True)
+            print(f"  {ep:>12,} / {n_episodes:,}  ({pct:3d}%)  eps={epsilon:.3f}", flush=True)
 
-    print(f"  [worker {worker_id}] done", flush=True)
-    return (q.hard, q.soft, q.pairs, rules.DAS)
-
-
-def _average_qtables(results: list[tuple], das: bool) -> QTable:
-    q = QTable(das=das)
-    n = len(results)
-    for row_i in range(18):
-        for col_i in range(10):
-            for a in range(_N_ACTIONS):
-                q.hard[row_i][col_i][a] = sum(r[0][row_i][col_i][a] for r in results) / n
-    for row_i in range(9):
-        for col_i in range(10):
-            for a in range(_N_ACTIONS):
-                q.soft[row_i][col_i][a]  = sum(r[1][row_i][col_i][a] for r in results) / n
-                q.pairs[row_i][col_i][a] = sum(r[2][row_i][col_i][a] for r in results) / n
-    q._dirty = True
     return q
-
-
-def train(
-    rules: DealerSettingsObject,
-    n_episodes: int = 50_000_000,
-    epsilon_start: float = 0.1,
-    epsilon_end: float = 0.01,
-    alpha_start: float = 0.1,
-    alpha_end: float = 0.001,
-    workers: int | None = None,
-) -> QTable:
-    import multiprocessing
-    cpu = multiprocessing.cpu_count() or 1
-    n_workers = min(workers if workers is not None else max(1, cpu - 4), 20)
-    print(f"Detected {cpu} logical CPUs. Running with {n_workers} parallel workers.", flush=True)
-    print("Use --workers N to adjust if your computer becomes unresponsive.", flush=True)
-
-    episodes_per_worker = n_episodes // n_workers
-    print(f"  {n_workers} workers x {episodes_per_worker:,} episodes = "
-          f"{n_workers * episodes_per_worker:,} total", flush=True)
-
-    worker_args = [
-        (rules, episodes_per_worker, epsilon_start, epsilon_end,
-         alpha_start, alpha_end, i)
-        for i in range(n_workers)
-    ]
-
-    with multiprocessing.Pool(processes=n_workers) as pool:
-        results = pool.map(_train_worker, worker_args)
-
-    print("  Averaging Q-tables...", flush=True)
-    return _average_qtables(results, rules.DAS)
 
 
 # ---------------------------------------------------------------------------
@@ -440,8 +400,7 @@ def accuracy_report(out_dfs: dict[str, pd.DataFrame], folder: Path, das: bool) -
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    import argparse, time, multiprocessing
-    multiprocessing.freeze_support()
+    import argparse, time
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--decks",        type=int,   default=1)
@@ -453,11 +412,9 @@ if __name__ == "__main__":
     parser.add_argument("--bj-pay",       type=float, default=1.5)
     parser.add_argument("--episodes",     type=int,   default=50_000_000)
     parser.add_argument("--epsilon",      type=float, default=0.1)
-    parser.add_argument("--alpha",        type=float, default=0.1)
-    parser.add_argument("--workers",      type=int,   default=None)
     parser.add_argument("--matrices-dir", dest="matrices_dir",
                         default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                             "..", "VerifiedStrategyMatrices"))
+                                             "..", "strategy_matrices"))
     args = parser.parse_args()
 
     rules = DealerSettingsObject(
@@ -471,14 +428,12 @@ if __name__ == "__main__":
     print(f"Settings : {args.decks}D  {'S17' if args.s17 else 'H17'}  "
           f"{'ENHC' if args.enhc else 'US'}  {'DAS' if args.das else 'nDAS'}  BJ={args.bj_pay}x")
     print(f"Folder   : {folder}")
-    print(f"Episodes : {args.episodes:,}  epsilon: {args.epsilon}→0.01  alpha: {args.alpha}→0.001\n")
+    print(f"Episodes : {args.episodes:,}  epsilon: {args.epsilon}→0.01  alpha: per-cell 1/n\n")
 
     t0 = time.time()
     q = train(rules,
               n_episodes=args.episodes,
-              epsilon_start=args.epsilon,
-              alpha_start=args.alpha,
-              workers=args.workers)
+              epsilon_start=args.epsilon)
     elapsed = time.time() - t0
 
     print(f"\nTraining complete in {elapsed:.1f}s  ({args.episodes/elapsed:,.0f} episodes/sec)")
@@ -487,8 +442,4 @@ if __name__ == "__main__":
     prefix_base = _rule_prefix(args.decks, args.s17, args.enhc)
     prefix_das  = _rule_prefix(args.decks, args.s17, args.enhc, args.das)
     out_dfs = export_csvs(q, folder, out_folder=out_folder, prefix_base=prefix_base, prefix_das=prefix_das)
-    verified_folder = (Path(args.matrices_dir)
-                       / ("1D" if args.decks == 1 else ("2D" if args.decks == 2 else "MD"))
-                       / ("S17" if args.s17 else "H17")
-                       / ("ENHC" if args.enhc else "US"))
-    accuracy_report(out_dfs, verified_folder, das=args.das)
+    accuracy_report(out_dfs, folder, das=args.das)

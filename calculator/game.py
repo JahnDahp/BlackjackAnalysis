@@ -468,7 +468,7 @@ def main():
   parser.add_argument("--ra",           type=float, default=0.0,
                       help="Risk aversion coefficient λ (CE = EV - (λ/2)·Var). Default 0 = risk neutral.")
   parser.add_argument("--bet",          type=float, default=25.0,
-                      help="Flat bet size in dollars. Default $10.")
+                      help="Flat bet size in dollars. Default $25.")
   args = parser.parse_args()
 
   stand_ds     = get_dataset(load_json("stand.json"),  "probs", args.decks, args.s17, args.enhc)

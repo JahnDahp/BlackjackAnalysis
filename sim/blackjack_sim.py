@@ -1,11 +1,15 @@
 from __future__ import annotations
+
+import os
+import sys
+parent = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+sys.path.insert(0, parent)
+from blackjack import BlackjackSimulator, DealerSettingsObject
+os.environ["PYTHONUNBUFFERED"] = "1"
 import random
 from pathlib import Path
 import pandas as pd
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from blackjack import (BlackjackSimulator, DealerSettingsObject)
+
 
 MIN_CELL_ITERS = 1          # floor: always run at least this many iterations
 MAX_CELL_ITERS = 1_000_000  # cap: beyond this the decision margin is negligible
@@ -93,15 +97,9 @@ def _calc_and_save_iterations(
         return t
 
     def _condition(probs: dict, up_card_idx: int) -> dict:
-        """
-        For US peek rules, upcards A (idx=9) and 10 (idx=8) have unconditional
-        win/tie/lose probs that include dealer BJ. Condition on no dealer BJ so
-        EV deltas match what the simulator measures (post-peek conditional EVs).
-        For ENHC, dealer BJ is a real outcome — no conditioning needed.
-        """
         if ENHC:
-            return probs  # ENHC: unconditional probs are correct
-        if up_card_idx not in (8, 9):  # only A and 10 need conditioning
+            return probs
+        if up_card_idx not in (8, 9):
             return probs
         dbj = probs.get("DBJ", 0.0)
         if dbj <= 0:
@@ -111,7 +109,7 @@ def _calc_and_save_iterations(
             "winProb":  probs["winProb"]  * scale,
             "tieProb":  probs["tieProb"]  * scale,
             "loseProb": probs["loseProb"] * scale,
-            "DBJ":      0.0,  # conditioned out
+            "DBJ":      0.0,
         }
 
     def _s_ev(s, uc=None):
@@ -159,7 +157,6 @@ def _calc_and_save_iterations(
         w_var+=sum((ev_fn(e[2],uc_idx)-w_ev)**2*e[1] for e in entries)/tp
         return w_ev,w_var
 
-
     def _req_n(v1,v2,delta):
         if delta<=1e-10: return MIN_CELL_ITERS
         n = math.ceil(z**2*(v1+v2)/delta**2 * 2)
@@ -174,8 +171,6 @@ def _calc_and_save_iterations(
         return by_t
 
     def _worst_n(evs_dict, label=""):
-        # Only compare best vs second-best — that is the only decision that matters.
-        # No other pair comparison can change which action is optimal.
         items = sorted(evs_dict.items(), key=lambda x: -x[1][0])
         if len(items) < 2:
             return 1
@@ -299,14 +294,6 @@ def _rule_prefix(decks: int, s17: bool, enhc: bool, das: bool | None = None) -> 
 
 
 def _load_strategy_csv(folder: Path, name: str, das: bool | None = None) -> pd.DataFrame | None:
-    """
-    Tries to find a strategy CSV in the folder. Checks naming patterns:
-      1. <prefix>_DAS_<name>.csv  or  <prefix>_NDAS_<name>.csv  (DAS-specific)
-      2. <prefix>_<name>.csv      e.g. 1D_S17_US_Hard.csv
-      3. <name>.csv               e.g. Hard.csv
-    where <prefix> is inferred from the folder path (e.g. 1D_S17_US).
-    Pairs CSVs have string indices so int cast is skipped.
-    """
     parts = folder.parts
     prefix = "_".join(parts[-3:]) if len(parts) >= 3 else ""
     das_str = ("DAS" if das else "NDAS") if das is not None else None
@@ -330,7 +317,6 @@ def _load_strategy_csv(folder: Path, name: str, das: bool | None = None) -> pd.D
 
 
 def _make_flat_iterations_df(n: int, name: str) -> pd.DataFrame:
-    """Create a flat iterations DataFrame with every cell set to n."""
     up_labels   = ["2","3","4","5","6","7","8","9","10","A"]
     pair_labels = ["10","9","8","7","6","5","4","3","2","A"]
     if "Pairs" in name:
@@ -346,7 +332,6 @@ def _make_flat_iterations_df(n: int, name: str) -> pd.DataFrame:
 
 def _load_iterations_csv(folder: Path, name: str, prefix: str = "",
                          iterations_override: int | None = None) -> pd.DataFrame:
-    """Load iterations CSV, or return flat df if override is set."""
     if iterations_override is not None:
         return _make_flat_iterations_df(iterations_override, name)
     clean = name.replace("_DAS", "").replace("_NDAS", "")
@@ -365,7 +350,6 @@ def _load_iterations_csv(folder: Path, name: str, prefix: str = "",
 
 
 def _get_iterations_for_cell(iter_df: pd.DataFrame, total, up_card: int) -> int:
-    """Look up the required iterations for one (total, upcard) cell."""
     col = "A" if up_card == 1 else str(up_card)
     key = str(total)
     for idx in iter_df.index:
@@ -384,7 +368,6 @@ def _get_series(df: pd.DataFrame | None, up_card: int) -> pd.Series | None:
     if col not in df.columns:
         return None
     s = df[col].copy()
-    # Map index to int, treating "A" as 1
     def _to_int(v):
         s = str(v).strip()
         return 1 if s == "A" else int(s)
@@ -397,16 +380,6 @@ def _get_series(df: pd.DataFrame | None, up_card: int) -> pd.Series | None:
 # ---------------------------------------------------------------------------
 
 def _resolve_ev_to_code(stand_ev: float, hit_ev: float, double_ev: float) -> str:
-    """
-    Returns the best strategy code. Double is always DH or DS — never bare D.
-      DH = double is best, fallback is hit  (hit EV > stand EV)
-      DS = double is best, fallback is stand (stand EV >= hit EV)
-      H  = hit is best
-      S  = stand is best
-
-    double_ev is on a 2-unit bet — normalized to 1-unit before comparing.
-    EVs are already conditional on no dealer BJ (NaN resampling in run()).
-    """
     double_ev_normalized = double_ev / 2.0
     if double_ev_normalized >= stand_ev and double_ev_normalized >= hit_ev:
         return "DH" if hit_ev > stand_ev else "DS"
@@ -534,11 +507,6 @@ class Simulator:
         workers: int | None = None,
         modes: list[str] | None = None,
     ) -> dict[str, pd.DataFrame]:
-        """
-        Run all requested modes in a single pool so workers move directly
-        from one table to the next without sitting idle between tables.
-        modes: subset of ["hard", "soft", "pairs"]; defaults to all three.
-        """
         import multiprocessing
         folder = Path(strategy_folder)
         das = self.dealer_settings.DAS
@@ -550,9 +518,6 @@ class Simulator:
 
         mw = _resolve_workers(workers)
 
-        # One worker per upcard — each runs all phases sequentially for its upcard:
-        # hard 21-11 → soft 21-13 → hard 10-4 → pairs
-        # Workers don't wait for other upcards between phases.
         hard_results:  list[dict] = []
         soft_results:  list[dict] = []
         pairs_results: list[dict] = []
@@ -637,6 +602,7 @@ class Simulator:
 
     def calc_pairs(self, strategy_folder: str | Path, out_folder: Path | None = None, prefix_base: str = "", prefix_das: str = "", workers: int | None = None, **_) -> pd.DataFrame:
         return self.calc(strategy_folder, out_folder=out_folder, prefix_base=prefix_base, prefix_das=prefix_das, workers=workers, modes=["pairs"])["Pairs"]
+
     # ------------------------------------------------------------------
     # Composition helpers
     # ------------------------------------------------------------------
@@ -651,14 +617,13 @@ class Simulator:
         return result
 
     def get_only_top_compositions(self, soft):
-        """Return ALL compositions per total/upcard, normalised probabilities summing to 1."""
         totals = list(range(13, 22)) if soft else list(range(4, 22))
         result = []
         for uc in range(1, 11):
             upcard_row = []
             for total in totals:
                 comps = self.order_most_probable_hands(total, uc, soft)
-                upcard_row.append(comps)  # already normalised in order_most_probable_hands
+                upcard_row.append(comps)
             result.append(upcard_row)
         return result
 
@@ -708,10 +673,8 @@ def _resolve_workers(workers):
 
 
 def _build_matrix(results: list[dict], totals: list[int]) -> tuple[pd.DataFrame, dict]:
-    """Returns (strategy_df, ev_dict) where ev_dict[(total, col)] = {S, H, D} EVs."""
     up_card_order = [2, 3, 4, 5, 6, 7, 8, 9, 10, 1]
     col_labels = [str(u) if u != 1 else "A" for u in up_card_order]
-    # Merge multiple result dicts per upcard (hard is split into 2 phases)
     result_map: dict[int, dict] = {}
     ev_map: dict[int, dict] = {}
     for r in results:
@@ -721,7 +684,6 @@ def _build_matrix(results: list[dict], totals: list[int]) -> tuple[pd.DataFrame,
     rows = [[result_map[uc].get(t, "H") for uc in up_card_order] for t in totals]
     df = pd.DataFrame(rows, index=totals, columns=col_labels)
     df.index.name = "Hand"
-    # Build flat ev lookup: (str(total), col_label) -> evs dict
     ev_lookup: dict[tuple, dict] = {}
     for uc, col in zip(up_card_order, col_labels):
         for t in totals:
@@ -734,11 +696,6 @@ def _build_matrix(results: list[dict], totals: list[int]) -> tuple[pd.DataFrame,
 # ---------------------------------------------------------------------------
 
 def _upcard_worker(task: dict) -> dict:
-    """
-    Runs all phases for a single upcard in sequence:
-    hard 21-11 → soft 21-13 → hard 10-4 → pairs
-    Feeds each phase's results into the next as continuation strategy.
-    """
     uc          = task["up_card"]
     modes       = task["modes"]
     das         = task["das"]
@@ -749,7 +706,6 @@ def _upcard_worker(task: dict) -> dict:
     iter_pairs  = task["iter_pairs"]
     dealer_settings = task["dealer_settings"]
 
-    # Built strategy for this upcard (int: 0=S 1=H 2=D -1=unknown)
     hard_built = [-1] * 18
     soft_built = [-1] * 10
 
@@ -816,10 +772,8 @@ def _worker(task: dict) -> dict:
     HIT    = 1
     DOUBLE = 2
 
-    iter_df = task.get("iter_df")  # precomputed iterations CSV or None
+    iter_df = task.get("iter_df")
 
-    # Re-cast index to int inside the worker after unpickling, since
-    # multiprocessing on Windows can lose the int dtype on Series index.
     if hard_series is not None:
         hard_series = hard_series.copy()
         hard_series.index = hard_series.index.astype(int)
@@ -831,7 +785,6 @@ def _worker(task: dict) -> dict:
     soft_choices = soft_series if soft_series is not None else [-1] * 10
 
     def _run_n(hand: list[int], choice: int, n: int) -> float:
-        """Run exactly n non-BJ iterations."""
         import math
         sim = BlackjackSimulator(dealer_settings)
         tg = 0.0
@@ -855,12 +808,7 @@ def _worker(task: dict) -> dict:
         pair_results: dict[int, str] = {}
         pair_evs: dict[int, dict] = {}
 
-        # For split EV: simulate a single card drawn to one split hand,
-        # play it optimally using the perfect strategy continuation choices,
-        # then double that EV (symmetric hands). This avoids the issue of
-        # start_sim SPLIT advancing through both hands with broken choices.
         def split_hand_ev(pair_val: int, n: int) -> float:
-            """Simulate split EV conditional on no dealer BJ (resample on NaN)."""
             import math
             sim = BlackjackSimulator(dealer_settings)
             tg = 0.0
@@ -886,20 +834,16 @@ def _worker(task: dict) -> dict:
             cell_iters = _get_iterations_for_cell(iter_df, pair_label, up_card)
             stand_ev  = _run_n(hand, STAND,  cell_iters)
             hit_ev    = _run_n(hand, HIT,    cell_iters)
-            # 5,5 should never be split (treated as hard 10) — double is valid
             double_ev = _run_n(hand, DOUBLE, cell_iters)
-            # best_no_split_ev computed after double normalization below
 
-            # Only consider split if the hand can actually be split
             split_ev = split_hand_ev(pair_val, cell_iters)
-            # double_ev is on 2-unit bet; normalize to 1-unit for fair comparison
             double_ev_norm = double_ev / 2.0
             best_no_split_ev = max(stand_ev, hit_ev, double_ev_norm)
             code = "P" if split_ev > best_no_split_ev else _resolve_ev_to_code(stand_ev, hit_ev, double_ev)
 
             pl = "A" if pair_val == 1 else str(pair_val)
             print(f"[pairs|upCard={up_label}] {pl},{pl}: {code}  "
-                  f"(S={stand_ev:.4f} H={hit_ev:.4f} D={double_ev:.4f} P={split_ev:.4f})", flush=True)
+                  f"(S={stand_ev:.4f} H={hit_ev:.4f} D={double_ev_norm:.4f} P={split_ev:.4f})", flush=True)
             pair_results[pair_val] = code
             pair_evs[pair_val] = {"S": stand_ev, "H": hit_ev, "D": double_ev_norm, "P": split_ev}
         print(f"[pairs|upCard={up_label}] Done", flush=True)
@@ -908,9 +852,6 @@ def _worker(task: dict) -> dict:
     # ── Hard / Soft ───────────────────────────────────────────────────────
     hands_for_upcard: list = task["hands_for_upcard"]
     is_soft = (mode == "soft")
-    # Build from HIGH to LOW: when computing total N, all totals N+1..21
-    # are already in hard_choices/soft_choices, giving correct hit continuation.
-    # e.g. computing 16: hitting gives 17-26; strategy for 17+ already known.
     totals_range = task.get("totals_override") or (range(21, 12, -1) if is_soft else range(21, 3, -1))
     totals_out: dict[int, str] = {}
     evs_out: dict[int, dict] = {}
@@ -919,12 +860,8 @@ def _worker(task: dict) -> dict:
         idx = (hand_total - 13) if is_soft else (hand_total - 4)
         comps = hands_for_upcard[idx]
 
-        # Look up required iterations for this (total, upcard) cell.
-        # Falls back to the fixed `iterations` argument if no CSV loaded.
         cell_iters = _get_iterations_for_cell(iter_df, hand_total, up_card)
 
-        # Probability-weighted allocation across compositions:
-        # each comp gets max(1, round(prob * cell_iters)) iterations.
         stand_ev = hit_ev = double_ev = 0.0
         for comp in comps:
             p = comp["normalizedProb"]
@@ -935,7 +872,6 @@ def _worker(task: dict) -> dict:
 
         code = _resolve_ev_to_code(stand_ev, hit_ev, double_ev)
 
-        # Update incremental list choices if no perfect strategy provided
         if isinstance(hard_choices, list) and not is_soft:
             int_choice = STAND if "S" in code else (HIT if "H" in code else DOUBLE)
             hard_choices[hand_total - 4] = int_choice
@@ -973,13 +909,11 @@ if __name__ == "__main__":
     parser.add_argument("--confidence",   type=float, default=0.95,
                         help="Confidence level for iteration calculation e.g. 0.95 or 0.99")
     parser.add_argument("--data-dir",     dest="data_dir", default=None,
-                        help="Path to JSON data directory for iteration calc (default: ../data)")
+                        help="Path to JSON data directory for iteration calc (default: ../Data)")
     parser.add_argument("--workers",      type=int,   default=None)
     parser.add_argument("--mode",         choices=["hard", "soft", "pairs", "all"], default="all")
     parser.add_argument("--iterations",   type=int,   default=None,
                         help="Override all iteration counts with a fixed value (skips confidence-based calculation)")
-    parser.add_argument("--matrices-dir", dest="matrices_dir",
-                        default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "VerifiedStrategyMatrices"))
     args = parser.parse_args()
 
     dealer_settings = DealerSettingsObject(
@@ -987,9 +921,10 @@ if __name__ == "__main__":
         DAS=args.das, BJPay=args.bj_pay, drawAces=args.draw_aces,
     )
 
-    folder = _strategy_folder(args.matrices_dir, args.decks, args.s17, args.enhc)
+    matrices_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "strategy_matrices")
+    folder    = _strategy_folder(matrices_dir, args.decks, args.s17, args.enhc)
     script_dir = Path(os.path.dirname(os.path.abspath(__file__)))
-    data_dir = Path(args.data_dir) if args.data_dir else (script_dir / ".." / "Data").resolve()
+    data_dir  = Path(args.data_dir) if args.data_dir else (script_dir / ".." / "Data").resolve()
 
     print(f"Settings : {args.decks}D  {'S17' if args.s17 else 'H17'}  {'ENHC' if args.enhc else 'US'}  {'DAS' if args.das else 'nDAS'}  BJ={args.bj_pay}x")
     print(f"Folder   : {folder}")
@@ -999,7 +934,6 @@ if __name__ == "__main__":
     prefix_base = _rule_prefix(args.decks, args.s17, args.enhc)
     prefix_das  = _rule_prefix(args.decks, args.s17, args.enhc, args.das)
 
-    # Step 1: compute and save iteration CSVs (skipped if --iterations is set)
     if args.iterations is None:
         _calc_and_save_iterations(
             folder, data_dir, args.confidence,
@@ -1009,7 +943,6 @@ if __name__ == "__main__":
     else:
         print(f"Using fixed {args.iterations:,} iterations per cell (skipping iteration calculation).", flush=True)
 
-    # Step 2: build hand compositions
     print("\nBuilding hand compositions...")
     sim = Simulator.create(dealer_settings)
     print("Done. Starting simulation...\n")
@@ -1029,12 +962,9 @@ if __name__ == "__main__":
     print("\n" + "=" * 50)
     print("ACCURACY REPORT")
     print("=" * 50)
+
     def _sim_key(hand, is_pairs: bool) -> str:
-        """Normalise a SIM df index value to match the verified CSV index."""
-        s = str(hand).strip()
-        if is_pairs:
-            return s  # already plain e.g. "10", "9", "A"
-        return s  # hard/soft: already int-like string e.g. "16"
+        return str(hand).strip()
 
     total_wrong = 0
     for table_name, sim_df in results_dfs.items():
@@ -1044,7 +974,6 @@ if __name__ == "__main__":
             continue
 
         is_pairs = (table_name == "Pairs")
-        # Build lookup: normalised key -> verified index value
         v_lookup = {str(i).strip(): i for i in verified_df.index}
 
         wrong: list[str] = []
@@ -1063,11 +992,10 @@ if __name__ == "__main__":
                     ev_lookup = sim_df.attrs.get("ev_lookup", {})
                     evs = ev_lookup.get((key, col), {})
                     if evs:
-                        got_ev   = evs.get(sim_val[0], evs.get("P", None))  # first char S/H/D/P
-                        want_ev  = evs.get(verified_val[0], None)
+                        got_ev  = evs.get(sim_val[0], evs.get("P", None))
+                        want_ev = evs.get(verified_val[0], None)
                         if got_ev is not None and want_ev is not None:
-                            diff = got_ev - want_ev
-                            ev_note = f"  (margin: {diff:.4f})"
+                            ev_note = f"  (margin: {got_ev - want_ev:.4f})"
                     wrong.append(f"  {table_name} {key} vs {col}: got={sim_val}  expected={verified_val}{ev_note}")
 
         total_wrong += len(wrong)

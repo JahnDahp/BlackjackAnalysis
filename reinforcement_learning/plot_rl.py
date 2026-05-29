@@ -1,230 +1,441 @@
-"""
-plot_rl_convergence.py
-
-Runs the RL agent at episode counts equivalent to the Monte Carlo simulator's
-iteration counts (scaled by 1210 total simulator calls per iteration count).
-
-Episode counts: 121000, 1210000, 12100000, 121000000, 605000000, 1210000000
-Equivalent MC:  100,    1000,    10000,    100000,    500000,    1000000
-
-Usage:
-    python plot_rl_convergence.py
-    python plot_rl_convergence.py --decks 1 --s17 --das
-    python plot_rl_convergence.py --output rl_convergence.png
-"""
-
 from __future__ import annotations
-
-import os
-import sys
-import time
+import math
+import random
 from pathlib import Path
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
-import numpy as np
-
-from ReinforcementLearning.blackjack_rl import (
-    QTable, _train_worker, _load_strategy_csv,
-    _strategy_folder, _rule_prefix, _N_ACTIONS,
-    _upcard_weights, _sample_hand, _run_episode,
+import pandas as pd
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from blackjack import (
+    BlackjackSimulator, DealerSettingsObject,
+    _STAND, _HIT, _DOUBLE, _SPLIT, _NONE,
 )
-from blackjack import BlackjackSimulator, DealerSettingsObject
+
+# ---------------------------------------------------------------------------
+# Actions
+# ---------------------------------------------------------------------------
+
+STAND  = _STAND   # 0
+HIT    = _HIT     # 1
+DOUBLE = _DOUBLE  # 2
+SPLIT  = _SPLIT   # 3
+
+ACTION_NAMES     = {STAND: "S", HIT: "H", DOUBLE: "DH", SPLIT: "P"}  # DH is default; DS resolved in to_strategy_dicts
+HARD_ACTIONS     = [STAND, HIT, DOUBLE]
+PAIR_DAS_ACTIONS = [STAND, HIT, DOUBLE, SPLIT]
+PAIR_NDAS_ACTIONS= [STAND, HIT, SPLIT]
+
+# ---------------------------------------------------------------------------
+# Q-table
+# ---------------------------------------------------------------------------
+
+_N_ACTIONS = 4
+
+def _empty_table(n_rows: int) -> list:
+    # Optimistic initialization at +1.0 — all unvisited actions look promising,
+    # driving natural exploration without needing high epsilon.
+    def _init():
+        return [1.0] * _N_ACTIONS
+    return [[_init() for _ in range(10)] for _ in range(n_rows)]
 
 
-# 1210 = 180*3 (hard) + 90*3 (soft) + 100*4 (pairs)
-MC_TO_RL_SCALE  = 1210
-MC_ITER_COUNTS  = [100, 1_000, 10_000, 100_000]
-RL_EPISODE_COUNTS = [mc * MC_TO_RL_SCALE for mc in MC_ITER_COUNTS]
+class QTable:
+    def __init__(self, das: bool) -> None:
+        self.das        = das
+        self.hard  = _empty_table(18)
+        self.soft  = _empty_table(9)    # totals 13-21
+        self.pairs = _empty_table(10)   # DAS or nDAS depending on rules
+        self._dirty     = True
+        self._hard_dbl   = [_NONE] * 22
+        self._hard_nodbl = [_NONE] * 22
+        self._soft_dbl   = [_NONE] * 22
+        self._soft_nodbl = [_NONE] * 22
+        self._rebuild_strategy()
+
+    def _row(self, table: str, key: int) -> int:
+        if table == "hard": return key - 4
+        if table == "soft": return key - 13
+        return key - 1
+
+    def _tbl(self, table: str) -> list:
+        if table == "hard": return self.hard
+        if table == "soft": return self.soft
+        return self.pairs
+
+
+    def _actions(self, table: str) -> list[int]:
+        if table == "pairs_das":  return PAIR_DAS_ACTIONS
+        if table == "pairs_ndas": return PAIR_NDAS_ACTIONS
+        return HARD_ACTIONS
+
+    def best_action(self, table: str, key: int, upcard: int) -> int:
+        row = self._row(table, key)
+        col = upcard - 1
+        q   = self._tbl(table)[row][col]
+        return max(self._actions(table), key=lambda a: q[a])
+
+    def update(self, table: str, key: int, upcard: int,
+               action: int, reward: float, alpha: float = 0.1) -> None:
+        row = self._row(table, key)
+        col = upcard - 1
+        tbl = self._tbl(table)
+        tbl[row][col][action] += alpha * (reward - tbl[row][col][action])
+        self._dirty = True
+
+    def _rebuild_strategy(self) -> None:
+        for total in range(4, 22):
+            acts = [self.best_action("hard", total, uc) for uc in range(1, 11)]
+            modal = max(set(acts), key=acts.count)
+            self._hard_dbl[total]   = modal
+            self._hard_nodbl[total] = HIT if modal == DOUBLE else modal
+        for total in range(13, 22):
+            acts = [self.best_action("soft", total, uc) for uc in range(1, 11)]
+            modal = max(set(acts), key=acts.count)
+            self._soft_dbl[total]   = modal
+            self._soft_nodbl[total] = HIT if modal == DOUBLE else modal
+        self._dirty = False
+
+    def get_strategy_arrays(self):
+        if self._dirty:
+            self._rebuild_strategy()
+        return (self._hard_dbl, self._soft_dbl,
+                self._hard_nodbl, self._soft_nodbl)
+
+    def _action_code(self, table: str, key: int, upcard: int) -> str:
+        """Return strategy code including DS vs DH distinction for doubles."""
+        best = self.best_action(table, key, upcard)
+        if best != DOUBLE:
+            return ACTION_NAMES[best]
+        # Double: check second-best to determine fallback (DS or DH)
+        actions = self._actions(table)
+        row = self._row(table, key)
+        col = upcard - 1
+        q   = self._tbl(table)[row][col]
+        others = [a for a in actions if a != DOUBLE]
+        second = max(others, key=lambda a: q[a])
+        return "DS" if second == STAND else "DH"
+
+    def to_strategy_dicts(self) -> dict:
+        result = {"hard": {}, "soft": {}, "pairs": {}}
+        for upcard in range(1, 11):
+            uc_label = "A" if upcard == 1 else str(upcard)
+            for total in range(4, 22):
+                result["hard"].setdefault(total, {})[uc_label] = self._action_code("hard", total, upcard)
+            for total in range(13, 22):
+                result["soft"].setdefault(total, {})[uc_label] = self._action_code("soft", total, upcard)
+            for pr in range(1, 11):
+                result["pairs"].setdefault(pr, {})[uc_label] = self._action_code(
+                    "pairs_das" if self.das else "pairs_ndas", pr, upcard)
+        return result
 
 
 # ---------------------------------------------------------------------------
-# Error counting
+# Folder / CSV helpers (mirrors Simulator.py)
 # ---------------------------------------------------------------------------
 
-def _count_errors(q: QTable, folder: Path, das: bool) -> int:
+def _strategy_folder(base_dir: str, decks: int, s17: bool, enhc: bool, das: bool) -> Path:
+    deck_str = "1D" if decks == 1 else ("2D" if decks == 2 else "MD")
+    return (Path(base_dir) / deck_str / ("S17" if s17 else "H17")
+            / ("ENHC" if enhc else "US"))
+
+
+def _output_folder(base_dir: str) -> Path:
+    from datetime import datetime
+    now = datetime.now()
+    stamp = now.strftime(f"RL_{now.month}_{now.day}_{now.year}_%H-%M")
+    return Path(base_dir) / "outputs_rl" / stamp
+
+
+def _rule_prefix(decks: int, s17: bool, enhc: bool, das: bool | None = None) -> str:
+    deck_str = "1D" if decks == 1 else ("2D" if decks == 2 else "MD")
+    rule_str = "S17" if s17 else "H17"
+    peek_str = "ENHC" if enhc else "US"
+    if das is None:
+        return f"{deck_str}_{rule_str}_{peek_str}"
+    return f"{deck_str}_{rule_str}_{peek_str}_{'DAS' if das else 'NDAS'}"
+
+
+def _load_strategy_csv(folder: Path, name: str, das: bool | None = None) -> pd.DataFrame | None:
+    parts  = folder.parts
+    # Strip DAS/NDAS subfolder if present — verified CSVs use 3-part prefix e.g. 1D_S17_US
+    clean_parts = [p for p in parts[-4:] if p not in ("DAS", "NDAS")][-3:]
+    prefix = "_".join(clean_parts) if len(clean_parts) >= 3 else "_".join(parts[-3:])
+    das_str = ("DAS" if das else "NDAS") if das is not None else None
+    candidates = []
+    if das_str:
+        candidates.append(f"{prefix}_{das_str}_{name}.csv")
+    candidates += [f"{prefix}_{name}.csv", f"{name}.csv"]
+    for candidate in candidates:
+        path = folder / candidate
+        if path.exists():
+            df = pd.read_csv(path, index_col="Hand")
+            if name != "Pairs":
+                try:
+                    df.index = df.index.astype(int)
+                except (ValueError, TypeError):
+                    pass
+            return df
+    return None
+
+
+
+
+# ---------------------------------------------------------------------------
+# Hand sampling
+# ---------------------------------------------------------------------------
+
+def _upcard_weights(decks: int) -> list[float]:
+    counts = [decks * 4] * 10
+    counts[9] = decks * 16
+    total = sum(counts)
+    return [c / total for c in counts]
+
+
+def _sample_upcard(weights: list[float]) -> int:
+    r = random.random()
+    cumul = 0.0
+    for i, w in enumerate(weights):
+        cumul += w
+        if r < cumul:
+            return i + 1
+    return 10
+
+
+def _sample_hand(decks: int, upcard: int) -> list[int]:
+    counts = [0] + [decks * 4] * 9 + [decks * 16]
+    counts[upcard] -= 1
+    total = sum(counts[1:])
+
+    def draw() -> int:
+        r = random.randrange(total)
+        for rank in range(1, 11):
+            r -= counts[rank]
+            if r < 0:
+                return rank
+        return 10
+
+    c1 = draw(); counts[c1] -= 1
+    c2 = draw()
+    return [c1, c2]
+
+
+def _classify(cards: list[int]) -> tuple[str, int]:
+    if len(cards) == 2 and cards[0] == cards[1]:
+        return "pair", cards[0]
+    t = aces = 0
+    for r in cards:
+        if r == 1: t += 11; aces += 1
+        else: t += r
+    while t > 21 and aces > 0: t -= 10; aces -= 1
+    return ("soft" if aces > 0 else "hard"), t
+
+
+# ---------------------------------------------------------------------------
+# Episode
+# ---------------------------------------------------------------------------
+
+def _run_episode(
+    sim: BlackjackSimulator,
+    q: QTable,
+    upcard: int,
+    hand: list[int],
+    epsilon: float,
+    alpha: float,
+    hard_dbl: list[int],
+    soft_dbl: list[int],
+) -> None:
+    table_type, key = _classify(hand)
+    table = ("pairs_das" if sim.rules.DAS else "pairs_ndas") if table_type == "pair" else table_type
+
+    actions = q._actions(table)
+    action  = random.choice(actions) if random.random() < epsilon else q.best_action(table, key, upcard)
+
+    gain = math.nan
+    for _ in range(20):
+        gain = sim.start_sim(hand, upcard, action, hard_dbl, soft_dbl)
+        if not math.isnan(gain):
+            break
+    if math.isnan(gain):
+        return
+
+
+
+    q.update(table, key, upcard, action, gain, alpha)
+
+
+# ---------------------------------------------------------------------------
+# Training
+# ---------------------------------------------------------------------------
+
+def train(
+    rules: DealerSettingsObject,
+    n_episodes: int = 50_000_000,
+    epsilon_start: float = 0.1,
+    epsilon_end: float = 0.01,
+    alpha_start: float = 0.1,
+    alpha_end: float = 0.001,
+) -> QTable:
+    sim = BlackjackSimulator(rules)
+    q   = QTable(das=rules.DAS)
+    upcard_weights = _upcard_weights(rules.decks)
+    hard_dbl, soft_dbl, _, _ = q.get_strategy_arrays()
+
+    rebuild_every = 10_000
+    log_every     = max(1, n_episodes // 10)
+
+    for ep in range(1, n_episodes + 1):
+        epsilon = epsilon_start + (epsilon_end - epsilon_start) * ep / n_episodes
+        alpha   = alpha_start   + (alpha_end   - alpha_start)   * ep / n_episodes
+        upcard  = _sample_upcard(upcard_weights)
+        hand    = _sample_hand(rules.decks, upcard)
+
+        _run_episode(sim, q, upcard, hand, epsilon, alpha, hard_dbl, soft_dbl)
+
+        if ep % rebuild_every == 0:
+            hard_dbl, soft_dbl, _, _ = q.get_strategy_arrays()
+
+        if ep % log_every == 0:
+            pct = 100 * ep // n_episodes
+            print(f"  {ep:>12,} / {n_episodes:,}  ({pct:3d}%)  "
+                  f"eps={epsilon:.3f}  alpha={alpha:.4f}", flush=True)
+
+    return q
+
+
+# ---------------------------------------------------------------------------
+# Export & accuracy report
+# ---------------------------------------------------------------------------
+
+def export_csvs(q: QTable, folder: Path, out_folder: Path | None = None, prefix_base: str = "", prefix_das: str = "") -> dict[str, pd.DataFrame]:
+    if out_folder is None:
+        out_folder = folder
+    out_folder = Path(out_folder)
+    out_folder.mkdir(parents=True, exist_ok=True)
     strat     = q.to_strategy_dicts()
     upcards   = [2, 3, 4, 5, 6, 7, 8, 9, 10, 1]
     up_labels = ["2","3","4","5","6","7","8","9","10","A"]
+    out_dfs   = {}
+
     pair_ranks  = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
     pair_labels = ["10","9","8","7","6","5","4","3","2","A"]
 
+    for name, keys, key_labels, table_key in [
+        ("Hard",       list(range(21,3,-1)), [str(t) for t in range(21,3,-1)],   "hard"),
+        ("Soft",       list(range(21,12,-1)), [str(t) for t in range(21,12,-1)], "soft"),
+        ("Pairs", pair_ranks, pair_labels, "pairs"),
+    ]:
+        rows = [[strat[table_key].get(k, {}).get("A" if uc==1 else str(uc), "H")
+                 for uc in upcards] for k in keys]
+        df = pd.DataFrame(rows, index=key_labels, columns=up_labels)
+        df.index.name = "Hand"
+        if name in ("Hard", "Soft"):
+            try: df.index = df.index.astype(int)
+            except: pass
+        pfx = prefix_das if name == "Pairs" else prefix_base
+        file_name = f"{pfx}_{name}_RL.csv" if pfx else f"{name}_RL.csv"
+        path = out_folder / file_name
+        df.to_csv(path)
+        print(f"\nSaved -> {path}\n")
+        print(df.to_string())
+        out_dfs[name] = df
+
+    return out_dfs
+
+
+def accuracy_report(out_dfs: dict[str, pd.DataFrame], folder: Path, das: bool) -> None:
+    print("\n" + "=" * 50)
+    print("ACCURACY REPORT")
+    print("=" * 50)
+
     table_map = {
-        "Hard":  (list(range(21,3,-1)),  [str(t) for t in range(21,3,-1)],  "hard",  None),
-        "Soft":  (list(range(21,12,-1)), [str(t) for t in range(21,12,-1)], "soft",  None),
-        "Pairs": (pair_ranks,            pair_labels,                        "pairs", das),
+        "Hard":  ("Hard",  None),
+        "Soft":  ("Soft",  None),
+        "Pairs": ("Pairs", das),
     }
 
     total_wrong = 0
-    for csv_name, (keys, key_labels, strat_key, das_flag) in table_map.items():
+    for rl_name, (csv_name, das_flag) in table_map.items():
+        rl_df = out_dfs.get(rl_name)
+        if rl_df is None:
+            continue
         verified_df = _load_strategy_csv(folder, csv_name, das=das_flag)
         if verified_df is None:
+            print(f"{rl_name}: no verified CSV found, skipping")
             continue
+
         v_lookup = {str(i).strip(): i for i in verified_df.index}
-        for k, kl in zip(keys, key_labels):
-            key = str(kl).strip()
+        wrong: list[str] = []
+
+        for hand in rl_df.index:
+            key = str(hand).strip()
             if key not in v_lookup:
                 continue
             v_hand = v_lookup[key]
-            for uc, ul in zip(upcards, up_labels):
-                rl_val  = strat[strat_key].get(k, {}).get(ul, "H").strip().upper()
-                ver_val = str(verified_df.loc[v_hand, ul]).strip().upper() if ul in verified_df.columns else "H"
+            for col in rl_df.columns:
+                if col not in verified_df.columns:
+                    continue
+                rl_val  = str(rl_df.loc[hand, col]).strip().upper()
+                ver_val = str(verified_df.loc[v_hand, col]).strip().upper()
                 if rl_val != ver_val:
-                    total_wrong += 1
-    return total_wrong
+                    wrong.append(f"  {rl_name} {key} vs {col}: got={rl_val}  expected={ver_val}")
+
+        total_wrong += len(wrong)
+        print(f"{rl_name}: {'✓ Perfect' if not wrong else f'✗ {len(wrong)} incorrect'}")
+        for w in wrong:
+            print(w)
+
+    print("-" * 50)
+    print(f"Total incorrect decisions: {total_wrong}")
+    print("=" * 50)
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Entry point
 # ---------------------------------------------------------------------------
 
-def main() -> None:
-    import argparse
+if __name__ == "__main__":
+    import argparse, time
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--decks",        type=int,   default=6)
-    parser.add_argument("--s17",          action="store_true", default=False)
-    parser.add_argument("--h17",          dest="s17", action="store_false")  # default
+    parser.add_argument("--decks",        type=int,   default=1)
+    parser.add_argument("--s17",          action="store_true", default=True)
+    parser.add_argument("--h17",          dest="s17", action="store_false")
     parser.add_argument("--enhc",         action="store_true", default=False)
     parser.add_argument("--das",          action="store_true", default=True)
     parser.add_argument("--ndas",         dest="das", action="store_false")
     parser.add_argument("--bj-pay",       type=float, default=1.5)
+    parser.add_argument("--episodes",     type=int,   default=50_000_000)
+    parser.add_argument("--epsilon",      type=float, default=0.1)
+    parser.add_argument("--alpha",        type=float, default=0.1)
     parser.add_argument("--matrices-dir", dest="matrices_dir",
                         default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                             "..", "VerifiedStrategyMatrices"))
-    parser.add_argument("--output", default=os.path.join(
-                        os.path.dirname(os.path.abspath(__file__)), "rl_convergence_plot.png"))
+                                             "..", "strategy_matrices"))
     args = parser.parse_args()
 
     rules = DealerSettingsObject(
         decks=args.decks, S17=args.s17, ENHC=args.enhc,
         DAS=args.das, BJPay=args.bj_pay,
     )
+
     folder = _strategy_folder(args.matrices_dir, args.decks, args.s17, args.enhc, args.das)
-    # Verified CSVs live one level up — no DAS/NDAS subfolder
-    verified_folder = (Path(args.matrices_dir)
-                       / ("1D" if args.decks == 1 else ("2D" if args.decks == 2 else "MD"))
-                       / ("S17" if args.s17 else "H17")
-                       / ("ENHC" if args.enhc else "US"))
+    folder.mkdir(parents=True, exist_ok=True)
 
-    print(f"Settings: {args.decks}D  {'S17' if args.s17 else 'H17'}  "
-          f"{'ENHC' if args.enhc else 'US'}  {'DAS' if args.das else 'nDAS'}")
-    print(f"Scale   : 1 MC iteration = {MC_TO_RL_SCALE} RL episodes")
-    print(f"Testing {len(RL_EPISODE_COUNTS)} episode counts (single worker, no averaging)\n")
+    print(f"Settings : {args.decks}D  {'S17' if args.s17 else 'H17'}  "
+          f"{'ENHC' if args.enhc else 'US'}  {'DAS' if args.das else 'nDAS'}  BJ={args.bj_pay}x")
+    print(f"Folder   : {folder}")
+    print(f"Episodes : {args.episodes:,}  epsilon: {args.epsilon}→0.01  alpha: {args.alpha}→0.001\n")
 
-    error_counts = []
-    iter_times   = []
-    total_start  = time.time()
+    t0 = time.time()
+    q = train(rules,
+              n_episodes=args.episodes,
+              epsilon_start=args.epsilon,
+              alpha_start=args.alpha)
+    elapsed = time.time() - t0
 
-    for mc_iters, rl_eps in zip(MC_ITER_COUNTS, RL_EPISODE_COUNTS):
-        iter_start = time.time()
-        print(f"── {rl_eps:>12,} episodes  (≡ {mc_iters:>8,} MC iters) ──────────────", flush=True)
+    print(f"\nTraining complete in {elapsed:.1f}s  ({args.episodes/elapsed:,.0f} episodes/sec)")
 
-        sim = BlackjackSimulator(rules)
-        q   = QTable(das=rules.DAS)
-        upcard_weights = _upcard_weights(rules.decks)
-        hard_dbl, soft_dbl, _, _ = q.get_strategy_arrays()
-        rebuild_every = 10_000
-        log_every     = max(1, rl_eps // 10)
-        from ReinforcementLearning.blackjack_rl import _sample_upcard
-
-        for ep in range(1, rl_eps + 1):
-            epsilon = 0.1  + (0.01  - 0.1)  * ep / rl_eps
-            alpha   = 0.1  + (0.001 - 0.1)  * ep / rl_eps
-            upcard  = _sample_upcard(upcard_weights)
-            hand    = _sample_hand(rules.decks, upcard)
-            _run_episode(sim, q, upcard, hand, epsilon, alpha, hard_dbl, soft_dbl)
-            if ep % rebuild_every == 0:
-                hard_dbl, soft_dbl, _, _ = q.get_strategy_arrays()
-            if ep % log_every == 0:
-                pct = 100 * ep // rl_eps
-                print(f"  {ep:>12,} / {rl_eps:,}  ({pct:3d}%)  "
-                      f"eps={epsilon:.3f}  alpha={alpha:.4f}", flush=True)
-
-        errors  = _count_errors(q, verified_folder, args.das)
-        elapsed = time.time() - iter_start
-        error_counts.append(errors)
-        iter_times.append(elapsed)
-        eps_per_sec = rl_eps / elapsed if elapsed > 0 else 0
-        print(f"  → {errors} incorrect decisions  ({elapsed:.1f}s  |  {eps_per_sec:,.0f} eps/sec  |  {mc_iters:,} equiv MC iters)\n", flush=True)
-
-    total_elapsed = time.time() - total_start
-    print(f"Total time: {total_elapsed:.1f}s  ({total_elapsed/60:.1f} min)\n")
-
-    print("Summary:")
-    print(f"  {'MC equiv':<12}  {'Episodes':>14}  {'Errors':>6}  {'Time':>8}")
-    print("  " + "-" * 46)
-    for mc, ep, er, tm in zip(MC_ITER_COUNTS, RL_EPISODE_COUNTS, error_counts, iter_times):
-        print(f"  {mc:<12,}  {ep:>14,}  {er:>6}  {tm:>7.1f}s")
-    print(f"  {'TOTAL':<12}  {'':>14}  {'':>6}  {total_elapsed:>7.1f}s")
-
-    # ---------------------------------------------------------------------------
-    # Plot
-    # ---------------------------------------------------------------------------
-    print("\nGenerating plot...")
-
-    fig, ax = plt.subplots(figsize=(12, 7))
-    fig.patch.set_facecolor("#0f1117")
-    ax.set_facecolor("#1a1d27")
-
-    x = np.array(MC_ITER_COUNTS)
-
-    ax.plot(x, error_counts,
-            color="#4FC3F7", linewidth=2.5,
-            marker="o", markersize=8,
-            markerfacecolor="#4FC3F7", markeredgecolor="#0f1117", markeredgewidth=1.5,
-            label="Reinforcement Learning", zorder=3)
-
-    ax.fill_between(x, error_counts, alpha=0.12, color="#4FC3F7")
-
-    for xi, yi in zip(x, error_counts):
-        ax.annotate(str(yi),
-                    xy=(xi, yi),
-                    xytext=(0, 12), textcoords="offset points",
-                    ha="center", fontsize=11, color="#4FC3F7")
-
-    ax.set_xscale("log")
-    ax.set_xlabel("Equivalent iterations per cell", fontsize=13, color="#cccccc", labelpad=10)
-    ax.set_ylabel("Incorrect Decisions", fontsize=13, color="#cccccc", labelpad=10)
-
-    rule_str = (f"{args.decks}D  {'S17' if args.s17 else 'H17'}  "
-                f"{'ENHC' if args.enhc else 'US'}  {'DAS' if args.das else 'nDAS'}")
-    ax.set_title(f"Reinforcement Learning Convergence\n{rule_str}",
-                 fontsize=15, color="#ffffff", pad=18, fontweight="bold")
-
-    # 121000, 1210000, 12100000, 121000000
-    tick_labels = ["121K", "1.210M", "12.1M", "121M"]
-    completed = MC_ITER_COUNTS[:len(error_counts)]
-    completed_labels = tick_labels[:len(error_counts)]
-    ax.set_xticks(completed)
-    ax.set_xticklabels(completed_labels, fontsize=11)
-    ax.tick_params(colors="#888888", labelsize=11)
-    for spine in ax.spines.values():
-        spine.set_edgecolor("#333344")
-
-    ax.grid(True, which="both", color="#252535", linewidth=0.8, alpha=0.8)
-    ax.set_ylim(bottom=-0.5)
-    ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-
-    ax.legend(fontsize=12, framealpha=0.25, facecolor="#1a1d27",
-              edgecolor="#444455", labelcolor="#dddddd", loc="upper right")
-
-    fig.text(0.99, 0.01,
-             f"Total time: {total_elapsed:.1f}s  ({total_elapsed/60:.1f} min)",
-             ha="right", va="bottom", fontsize=10,
-             color="#666677", fontstyle="italic")
-
-    plt.tight_layout()
-    plt.savefig(args.output, dpi=150, bbox_inches="tight",
-                facecolor=fig.get_facecolor())
-    plt.close()
-
-    print(f"Plot saved -> {args.output}")
-
-
-if __name__ == "__main__":
-    main()
+    out_folder = _output_folder(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    prefix_base = _rule_prefix(args.decks, args.s17, args.enhc)
+    prefix_das  = _rule_prefix(args.decks, args.s17, args.enhc, args.das)
+    out_dfs = export_csvs(q, folder, out_folder=out_folder, prefix_base=prefix_base, prefix_das=prefix_das)
+    accuracy_report(out_dfs, folder, das=args.das)
