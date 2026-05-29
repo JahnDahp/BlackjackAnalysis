@@ -3,13 +3,13 @@ import json
 import os
 
 
+
 class DealerSettingsObject:
   def __init__(self, decks=6, S17=True, ENHC=False, DAS=True):
     self.decks=decks; self.S17=S17; self.ENHC=ENHC; self.DAS=DAS
 
 
 
-# Tracks card counts and total for efficient shoe manipulation
 class ShoeCount:
   __slots__ = ("counts", "total")
 
@@ -41,7 +41,6 @@ class ShoeCount:
 
 
 
-# Fast hand total helpers that operate on rank tuples rather than card objects
 def total_ranks(ranks):
   total = 0; aces = 0
   for rank in ranks:
@@ -70,6 +69,7 @@ class Calculator:
   def create(calculator_class, dealer_settings):
     instance = calculator_class(dealer_settings)
     data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Data")
+
     def read(filename):
       with open(os.path.join(data_dir, filename), "r") as file:
         return json.load(file)
@@ -82,7 +82,6 @@ class Calculator:
 
 
 
-  # Data retrieval helpers
   def get_data_set(self, data):
     deck_map = {1:"oneDeck",2:"twoDeck",4:"fourDeck",6:"sixDeck",8:"eightDeck"}
     return data[deck_map[self.dealer_settings.decks]]["S17" if self.dealer_settings.S17 else "H17"]["enhc" if self.dealer_settings.ENHC else "us"]
@@ -105,7 +104,6 @@ class Calculator:
 
 
 
-  # Hand helpers
   def total(self, cards):
     total = 0; aces = 0
     for card in cards:
@@ -155,7 +153,6 @@ class Calculator:
 
 
 
-  # Dealer simulation
   def get_dealer_outcomes_cached(self, up_card, shoe):
     cache_key = (up_card,) + shoe.cache_key()
     cached = self.dealer_cache.get(cache_key)
@@ -185,8 +182,8 @@ class Calculator:
     counts = [0.0] * 7
     for hand, probability in results:
       hand_total = total_ranks(hand)
-      if 17 <= hand_total <= 20: counts[hand_total - 16] += probability
-      elif hand_total == 21: counts[6 if len(hand) == 2 else 5] += probability
+      if 17 <= hand_total <= 20: counts[hand_total - 16] += probability  # 17-20 → indices 1-4
+      elif hand_total == 21: counts[6 if len(hand) == 2 else 5] += probability  # 6=natural, 5=non-natural
       else: counts[0] += probability
     if not self.dealer_settings.ENHC: counts[6] = 0.0
     if normalize_flag: return self.normalize(counts)
@@ -219,7 +216,6 @@ class Calculator:
 
 
 
-  # Stand EV
   def stand_from_shoe(self, hand_ranks, up_card, shoe):
     hand_total = total_ranks(hand_ranks)
     if hand_total > 21: return (0.0, 0.0, 1.0, 0.0)
@@ -275,9 +271,7 @@ class Calculator:
 
 
 
-  # Hit EV
   def get_next_card_probs_fast(self, shoe, up_card):
-    # For US peek rules, conditions out dealer blackjack for A and 10 upcards
     probs = []; enhc = self.dealer_settings.ENHC; shoe_total = shoe.total
     if up_card == 10 and not enhc:
       ace_count = shoe.count(1)
@@ -351,7 +345,6 @@ class Calculator:
 
 
 
-  # Double EV
   def double_from_shoe(self, hand_ranks, up_card, shoe):
     next_card_probs = self.get_next_card_probs_fast(shoe, up_card)
     win = 0.0; tie = 0.0; lose = 0.0; dbj = 0.0
@@ -385,7 +378,6 @@ class Calculator:
 
 
 
-  # Split EV
   def calc_split(self, cards, up_card, exclude_cards=None):
     empty = {"winProb": 0.0, "tieProb": 0.0, "loseProb": 0.0, "DBJ": 0.0}
     hand_probs = {"noDouble": dict(empty), "double": dict(empty)}
@@ -409,7 +401,6 @@ class Calculator:
       hand_ranks = (pair_rank, rank)
 
       if pair_rank == 1:
-        # Forced stand on split aces
         stand_result = self.stand_from_shoe(hand_ranks, up_card, shoe)
         hand_probs["noDouble"]["winProb"] += stand_result[0] * rank_prob; hand_probs["noDouble"]["tieProb"] += stand_result[1] * rank_prob
         hand_probs["noDouble"]["loseProb"] += stand_result[2] * rank_prob; hand_probs["noDouble"]["DBJ"] += stand_result[3] * rank_prob
@@ -461,7 +452,6 @@ class Calculator:
 
 
 
-  # Cumulative EV lookups
   def get_split_probs(self):
     splits = []
     das_key = "DAS" if self.dealer_settings.DAS else "nDAS"
@@ -479,6 +469,7 @@ class Calculator:
 
   def get_cumulative_probs(self, decision):
     data = {"stand": self.stand_data, "hit": self.hit_data, "double": self.double_data}.get(decision)
+
     def calc_for_totals(soft, total_range):
       table = []
       for up_card in range(1, 11):
@@ -506,7 +497,6 @@ class Calculator:
 
 
 
-  # Hand composition simulation
   def run_hand_sim(self, total_target, up_card, soft_hands):
     all_hands=[]; next_card_probs = [0.0] * 10; seen_combos=set()
     base_shoe = ShoeCount(self.dealer_settings.decks)
