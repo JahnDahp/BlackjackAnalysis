@@ -12,21 +12,21 @@ pip install -r requirements.txt
 
 ```
 BlackjackAnalysis/
-├── blackjack.py                        # Core game engine (shared by all modules)
-├── data/                               # Precomputed probability tables (JSON)
-├── strategy_matrices/                  # Verified optimal strategy CSVs
+├── blackjack.py              # Shared game engine (sim + RL)
+├── data/                     # Precomputed probability tables (JSON)
+├── strategy_matrices/        # Verified optimal strategy CSVs
 ├── calculator/
-│   ├── blackjack_calc.py               # Exact EV calculator (probability trees)
-│   ├── calc_ev.py                      # Print EV tables for a given rule set
-│   ├── game.py                         # Interactive strategy chart + game EV
-│   └── run_calc.py                     # Regenerate data/JSON files
+│   ├── blackjack_calc.py     # Exact EV calculator (probability trees)
+│   ├── calc_ev.py            # Print EV tables for a given rule set
+│   ├── game.py               # Interactive strategy chart + game EV
+│   └── run_calc.py           # Regenerate data/ JSON files
 ├── sim/
-│   ├── blackjack_sim.py                # Monte Carlo strategy simulator
-│   ├── plot_sim.py                     # Plot simulator convergence
-│   └── iterations_from_confidence.py   # Compute required iterations per cell
+│   ├── blackjack_sim.py      # Monte Carlo strategy simulator
+│   ├── plot_sim.py           # Plot simulator convergence
+│   └── iterations_from_confidence.py  # Compute required iterations per cell
 └── reinforcement_learning/
-    ├── blackjack_rl.py                 # Train Q-table via reinforcement learning
-    └── plot_rl.py                      # Plot RL convergence
+    ├── blackjack_rl.py       # Train Q-table via reinforcement learning
+    └── plot_rl.py            # Plot RL convergence
 ```
 
 ## Rule Flags
