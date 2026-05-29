@@ -376,8 +376,18 @@ def accuracy_report(out_dfs: dict[str, pd.DataFrame], folder: Path, das: bool) -
 
 
 
+EPISODE_COUNTS = [121_000, 1_210_000, 12_100_000, 121_000_000]
+STATE_ACTION_PAIRS = 1_210
+
+
+
 if __name__ == "__main__":
   import argparse, time
+  import matplotlib
+  matplotlib.use("Agg")
+  import matplotlib.pyplot as plt
+  import matplotlib.ticker as mticker
+  import numpy as np
 
   parser = argparse.ArgumentParser()
   parser.add_argument("--decks", type=int, default=6)
@@ -386,8 +396,6 @@ if __name__ == "__main__":
   parser.add_argument("--enhc", action="store_true", default=False)
   parser.add_argument("--das", action="store_true", default=True)
   parser.add_argument("--ndas", dest="das", action="store_false")
-
-  parser.add_argument("--episodes", type=int, default=50_000_000)
   args = parser.parse_args()
 
   rules = DealerSettingsObject(
@@ -397,23 +405,128 @@ if __name__ == "__main__":
 
   matrices_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "strategy_matrices")
   folder = strategy_folder(matrices_dir, args.decks, args.s17, args.enhc, args.das)
-  folder.mkdir(parents=True, exist_ok=True)
+  output = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rl_convergence_plot.png")
 
-  print(f"Settings : {args.decks}D {'S17' if args.s17 else 'H17'} "
+  print(f"Settings: {args.decks}D {'S17' if args.s17 else 'H17'} "
       f"{'ENHC' if args.enhc else 'US'} {'DAS' if args.das else 'nDAS'}")
-  print(f"Folder : {folder}")
-  print(f"Episodes : {args.episodes:,}\n")
+  print(f"Testing {len(EPISODE_COUNTS)} episode counts...\n")
 
-  t0 = time.time()
-  q = train(rules,
-        n_episodes=args.episodes)
-  elapsed = time.time() - t0
+  def build_dfs(q: QTable) -> dict[str, pd.DataFrame]:
+    strat = q.to_strategy_dicts()
+    upcards = [2, 3, 4, 5, 6, 7, 8, 9, 10, 1]
+    up_labels = ["2","3","4","5","6","7","8","9","10","A"]
+    pair_ranks = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+    pair_labels = ["10","9","8","7","6","5","4","3","2","A"]
+    result = {}
+    for name, keys, key_labels, table_key in [
+      ("Hard", list(range(21,3,-1)), [str(t) for t in range(21,3,-1)], "hard"),
+      ("Soft", list(range(21,12,-1)), [str(t) for t in range(21,12,-1)], "soft"),
+      ("Pairs", pair_ranks, pair_labels, "pairs"),
+    ]:
+      rows = [[strat[table_key].get(k, {}).get("A" if upcard==1 else str(upcard), "H")
+           for upcard in upcards] for k in keys]
+      df = pd.DataFrame(rows, index=key_labels, columns=up_labels)
+      df.index.name = "Hand"
+      result[name] = df
+    return result
 
-  print(f"\nTraining complete in {elapsed:.1f}s ({args.episodes/elapsed:,.0f} episodes/sec)")
+  def count_errors(q: QTable) -> int:
+    total_wrong = 0
+    for name, df in build_dfs(q).items():
+      das_flag = args.das if name == "Pairs" else None
+      verified_df = load_strategy_csv(folder, name, das=das_flag)
+      if verified_df is None:
+        continue
+      v_lookup = {str(i).strip(): i for i in verified_df.index}
+      for hand in df.index:
+        key = str(hand).strip()
+        if key not in v_lookup:
+          continue
+        v_hand = v_lookup[key]
+        for col in df.columns:
+          if col not in verified_df.columns:
+            continue
+          if str(df.loc[hand, col]).strip().upper() != str(verified_df.loc[v_hand, col]).strip().upper():
+            total_wrong += 1
+    return total_wrong
 
-  out_folder = output_folder(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-  prefix_base = rule_prefix(args.decks, args.s17, args.enhc)
-  prefix_das = rule_prefix(args.decks, args.s17, args.enhc, args.das)
-  out_dfs = export_csvs(q, folder, out_folder=out_folder, prefix_base=prefix_base, prefix_das=prefix_das)
-  accuracy_report(out_dfs, folder, das=args.das)
+  error_counts = []
+  ep_times = []
+  total_start = time.time()
+
+  for ep_count in EPISODE_COUNTS:
+    ep_start = time.time()
+    eq_iters = ep_count // STATE_ACTION_PAIRS
+    print(f"── {ep_count:>14,} episodes ({eq_iters:,} iters/cell) ──────────", flush=True)
+    q = train(rules, n_episodes=ep_count)
+    errors = count_errors(q)
+    elapsed = time.time() - ep_start
+    ep_times.append(elapsed)
+    error_counts.append(errors)
+    print(f" → {errors} incorrect decisions ({elapsed:.1f}s)\n", flush=True)
+
+  total_elapsed = time.time() - total_start
+  print(f"Total time: {total_elapsed:.1f}s ({total_elapsed/60:.1f} min)\n")
+  print(f" {'Episodes':<16} {'Iters/cell':<12} {'Errors':>6} {'Time':>8}")
+  print("  " + "-"*46)
+  for ep, er, tm in zip(EPISODE_COUNTS, error_counts, ep_times):
+    print(f" {ep:<16,} {ep//STATE_ACTION_PAIRS:<12,} {er:>6} {tm:>7.1f}s")
+  print(f" {'TOTAL':<16} {'':<12} {'':<6} {total_elapsed:>7.1f}s")
+
+  print("\nGenerating plot...")
+
+  fig, ax = plt.subplots(figsize=(12, 7))
+  fig.patch.set_facecolor("#0f1117")
+  ax.set_facecolor("#1a1d27")
+
+  x = np.array([ep // STATE_ACTION_PAIRS for ep in EPISODE_COUNTS])
+
+  ax.plot(x, error_counts,
+      color="#EF9A9A", linewidth=2.5,
+      marker="o", markersize=8,
+      markerfacecolor="#EF9A9A", markeredgecolor="#0f1117", markeredgewidth=1.5,
+      label="Reinforcement Learning", zorder=3)
+
+  ax.fill_between(x, error_counts, alpha=0.12, color="#EF9A9A")
+
+  for xi, yi in zip(x, error_counts):
+    ax.annotate(str(yi),
+          xy=(xi, yi),
+          xytext=(0, 12), textcoords="offset points",
+          ha="center", fontsize=11, color="#EF9A9A")
+
+  ax.set_xscale("log")
+  ax.set_xlabel("Equivalent iterations per cell (episodes ÷ 1,210)", fontsize=13, color="#cccccc", labelpad=10)
+  ax.set_ylabel("Incorrect Decisions", fontsize=13, color="#cccccc", labelpad=10)
+
+  rule_str = (f"{args.decks}D {'S17' if args.s17 else 'H17'} "
+        f"{'ENHC' if args.enhc else 'US'} {'DAS' if args.das else 'nDAS'}")
+  ax.set_title(f"Reinforcement Learning Convergence\n{rule_str}",
+         fontsize=15, color="#ffffff", pad=18, fontweight="bold")
+
+  def fmt(n): return f"{n/1_000_000:.3g}M" if n >= 1_000_000 else (f"{n//1000}K" if n >= 1000 else str(n))
+  ax.set_xticks(x)
+  ax.set_xticklabels([fmt(n) for n in x], fontsize=11)
+  ax.tick_params(colors="#888888", labelsize=11)
+  for spine in ax.spines.values():
+    spine.set_edgecolor("#333344")
+
+  ax.grid(True, which="both", color="#252535", linewidth=0.8, alpha=0.8)
+  ax.set_ylim(bottom=-0.5)
+  ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+
+  ax.legend(fontsize=12, framealpha=0.25, facecolor="#1a1d27",
+        edgecolor="#444455", labelcolor="#dddddd", loc="upper right")
+
+  fig.text(0.99, 0.01,
+       f"Total time: {total_elapsed:.1f}s ({total_elapsed/60:.1f} min)",
+       ha="right", va="bottom", fontsize=10,
+       color="#666677", fontstyle="italic")
+
+  plt.tight_layout()
+  plt.savefig(output, dpi=150, bbox_inches="tight",
+        facecolor=fig.get_facecolor())
+  plt.close()
+
+  print(f"\nPlot saved -> {output}")
 

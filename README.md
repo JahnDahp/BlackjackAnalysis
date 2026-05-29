@@ -100,18 +100,20 @@ Runs the simulator at increasing iteration counts (100 → 1K → 10K → 100K) 
 
 The RL module trains a Q-table by playing out millions of random hands and updating action values based on actual outcomes. No access to the probability tables — strategy is learned purely from experience.
 
+The RL equivalent of an iteration is an episode — a single sampled hand against a single upcard, training one action at one cell. There are 1,210 state-action pairs in total: 180 hard cells × 3 actions + 90 soft cells × 3 actions + 100 pair cells × 4 actions (hit, stand, double, split) = 540 + 270 + 400 = 1,210. One episode covers one of these pairs, so the equivalent per-cell iteration count is episodes ÷ 1,210. The convergence plot runs at 1,210× the simulator's iteration milestones so the x-axes are directly comparable.
+
 **Train and output a strategy:**
 
 ```
 python reinforcement_learning/blackjack_rl.py [--decks N] [--s17|--h17] [--enhc] [--das|--ndas] [--episodes N]
 ```
 
-Trains a Q-table using an incremental learning rate (1/n visits) and epsilon-greedy exploration with linear decay. Outputs strategy CSVs and prints an accuracy report against verified optimal strategy.
+Trains a Q-table using an incremental learning rate (1/n visits by cell) and epsilon-greedy exploration with linear decay. Outputs strategy CSVs and prints an accuracy report against verified optimal strategy.
 
 **Plot convergence:**
 
 ```
-python reinforcement_learning/plot_rl.py [--decks N] [--s17|--h17] [--enhc] [--das|--ndas] [--episodes N]
+python reinforcement_learning/plot_rl.py [--decks N] [--s17|--h17] [--enhc] [--das|--ndas]
 ```
 
-Same as above but generates a convergence plot showing how strategy accuracy improves over training episodes.
+Runs training at increasing episode counts and generates a convergence plot showing how strategy accuracy improves over training episodes.
