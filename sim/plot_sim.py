@@ -56,7 +56,7 @@ def main() -> None:
 
   parser = argparse.ArgumentParser()
   parser.add_argument("--decks", type=int, default=6)
-  parser.add_argument("--s17", action="store_true", default=False)
+  parser.add_argument("--s17", action="store_true", default=True)
   parser.add_argument("--h17", dest="s17", action="store_false")
   parser.add_argument("--enhc", action="store_true", default=False)
   parser.add_argument("--das", action="store_true", default=True)

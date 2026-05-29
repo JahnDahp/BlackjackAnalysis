@@ -384,7 +384,7 @@ if __name__ == "__main__":
   import argparse, time
 
   parser = argparse.ArgumentParser()
-  parser.add_argument("--decks", type=int, default=1)
+  parser.add_argument("--decks", type=int, default=6)
   parser.add_argument("--s17", action="store_true", default=True)
   parser.add_argument("--h17", dest="s17", action="store_false")
   parser.add_argument("--enhc", action="store_true", default=False)

@@ -19,7 +19,7 @@ BlackjackAnalysis/
 │   ├── blackjack_calc.py               # Exact EV calculator (probability trees)
 │   ├── calc_ev.py                      # Print EV tables for a given rule set
 │   ├── game.py                         # Interactive strategy chart + game EV
-│   └── run_calc.py                     # Regenerate data/ JSON files
+│   └── run_calc.py                     # Regenerate data/JSON files
 ├── sim/
 │   ├── blackjack_sim.py                # Monte Carlo strategy simulator
 │   ├── plot_sim.py                     # Plot simulator convergence
@@ -35,7 +35,7 @@ Most scripts share a common set of rule flags:
 
 | Flag               | Description                            | Default |
 | ------------------ | -------------------------------------- | ------- |
-| `--decks N`        | Number of decks (1, 2, 4, 6, 8)        | varies  |
+| `--decks N`        | Number of decks (1, 2, 4, 6, 8)        | 6       |
 | `--s17` / `--h17`  | Dealer stands or hits on soft 17       | S17     |
 | `--enhc` / `--us`  | European no-hole-card vs. US peek      | US      |
 | `--das` / `--ndas` | Double after split allowed/not allowed | DAS     |
