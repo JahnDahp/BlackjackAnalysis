@@ -1,6 +1,6 @@
 # BlackjackAnalysis
 
-A blackjack analysis toolkit that determines optimal strategy through three independent approaches: exact probability calculation, Monte Carlo simulation, and reinforcement learning. Each approach is self-contained and produces strategy matrices that can be compared against each other.
+A blackjack analysis project that determines optimal strategy through three approaches: exact probability calculation, Monte Carlo simulation, and reinforcement learning. Each approach is measured by the amount of correct strategy decisions each method produces.
 
 ## Installation
 
@@ -12,21 +12,21 @@ pip install -r requirements.txt
 
 ```
 BlackjackAnalysis/
-├── blackjack.py              # Shared game engine (sim + RL)
-├── data/                     # Precomputed probability tables (JSON)
-├── strategy_matrices/        # Verified optimal strategy CSVs
+├── blackjack.py                        # Game engine
+├── data/                               # Precomputed probability tables (JSON)
+├── strategy_matrices/                  # Verified optimal strategy tables (CSV)
 ├── calculator/
-│   ├── blackjack_calc.py     # Exact EV calculator (probability trees)
-│   ├── calc_ev.py            # Print EV tables for a given rule set
-│   ├── game.py               # Interactive strategy chart + game EV
-│   └── run_calc.py           # Regenerate data/ JSON files
+│   ├── blackjack_calc.py               # Exact EV calculator
+│   ├── calc_ev.py                      # Print EV tables for a given rule set
+│   ├── game.py                         # Strategy chart + EV by ruleset
+│   └── run_calc.py                     # Regenerate data files
 ├── sim/
-│   ├── blackjack_sim.py      # Monte Carlo strategy simulator
-│   ├── plot_sim.py           # Plot simulator convergence
-│   └── iterations_from_confidence.py  # Compute required iterations per cell
+│   ├── blackjack_sim.py                # Monte Carlo strategy simulator
+│   ├── plot_sim.py                     # Plot simulator convergence
+│   └── iterations_from_confidence.py   # Compute required iterations per cell
 └── reinforcement_learning/
-    ├── blackjack_rl.py       # Train Q-table via reinforcement learning
-    └── plot_rl.py            # Plot RL convergence
+    ├── blackjack_rl.py                 # Train Q-table via reinforcement learning
+    └── plot_rl.py                      # Plot RL convergence
 ```
 
 ## Rule Flags
@@ -44,7 +44,7 @@ Most scripts share a common set of rule flags:
 
 ## Calculator
 
-The calculator uses recursive probability trees against precomputed dealer outcome tables to compute exact expected values. No sampling — results are mathematically precise.
+The calculator uses recursive probability trees against precomputed dealer outcome tables to compute exact expected values.
 
 **Print EV tables for a rule set:**
 
@@ -60,7 +60,7 @@ Prints hard, soft, and split EV tables showing the exact expected value of each 
 python calculator/game.py [--decks N] [--s17|--h17] [--enhc|--us] [--das|--ndas] [--surrender|--no-surrender] [--ra N] [--bet N]
 ```
 
-Prints color-coded basic strategy charts (hard, soft, pairs) and computes the overall player EV under optimal play, including hourly win/loss estimates.
+Prints color-coded hard, soft, and pair basic strategy charts and computes the overall player EV under optimal play, including hourly EV and standard deviation estimates given a flat bet size. Also allows for generating risk-averse basic strategy charts and hourly EV and standard deviation given a risk-aversion coefficient using the certainty equivalent formula.
 
 **Regenerate the Data/ JSON lookup tables:**
 
@@ -68,7 +68,7 @@ Prints color-coded basic strategy charts (hard, soft, pairs) and computes the ov
 python calculator/run_calc.py <hit|double|stand|dealer|split> [--workers N]
 ```
 
-Runs across all rule combinations (5 deck counts × 2 soft-17 rules × 2 peek rules) in parallel and writes updated JSON files to `data/`. Only needed if you want to rebuild the precomputed tables from scratch.
+Runs across all rule combinations (5 deck counts × 2 soft-17 rules × 2 peek rules) in parallel and writes updated JSON files to `data/`. Only needed if you want to rebuild the precomputed tables from scratch and to show how they were obtained.
 
 ---
 
@@ -82,10 +82,10 @@ The Monte Carlo simulator plays out hands using the core game engine and builds 
 python sim/blackjack_sim.py [--decks N] [--s17|--h17] [--enhc] [--das|--ndas] [--confidence N] [--workers N] [--iterations N]
 ```
 
-- Without `--iterations`: computes the required iterations per cell to distinguish the best action from the second-best at the given confidence level, then runs the simulation using those counts.
+- Without `--iterations N`: computes the required iterations per cell to distinguish the best action from the second-best at the given confidence level, then runs the simulation using those counts. Only useful because EV and variance is known due to the calculator method.
 - With `--iterations N`: skips the confidence calculation and uses a fixed iteration count for every cell.
 
-Outputs strategy CSVs and prints an accuracy report comparing simulated decisions against verified optimal strategy.
+Outputs strategy CSVs and prints an accuracy report comparing simulated decisions against verified optimal strategy. Can be run in parallel using `--workers N`.
 
 **Plot convergence:**
 
