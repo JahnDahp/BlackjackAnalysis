@@ -48,13 +48,13 @@ def double_ev(p):
   return 2.0 * ev_from_probabilities(p)
 
 def split_ev(p, das=False):
-  w2=p["double"]["winProb"]; t2=p["double"]["tieProb"]; l2=p["double"]["loseProb"]; d2=p["double"]["DBJ"]
-  w=p["noDouble"]["winProb"]; t=p["noDouble"]["tieProb"]; l=p["noDouble"]["loseProb"]; d=p["noDouble"]["DBJ"]
+  win_dbl=p["double"]["winProb"]; tie_dbl=p["double"]["tieProb"]; lose_dbl=p["double"]["loseProb"]; dbj_dbl=p["double"]["DBJ"]
+  win=p["noDouble"]["winProb"]; tie=p["noDouble"]["tieProb"]; lose=p["noDouble"]["loseProb"]; dbj=p["noDouble"]["DBJ"]
   if das:
-    win4=w2**2; win3=2*w2*w; win2=2*w2*(t+t2)+w**2; win1=2*w2*l+2*w*(t+t2)
-    lose1=2*l2*w+2*l*(t+t2); lose2=2*l2*(t+t2)+l**2; lose3=2*l2*l; lose4=l2**2
-    return 4*win4+3*win3+2*win2+win1-2*d-4*d2-lose1-2*lose2-3*lose3-4*lose4
-  return 2*w**2+2*w*t-2*d-2*l*t-2*l**2
+    win4=win_dbl**2; win3=2*win_dbl*win; win2=2*win_dbl*(tie+tie_dbl)+win**2; win1=2*win_dbl*lose+2*win*(tie+tie_dbl)
+    lose1=2*lose_dbl*win+2*lose*(tie+tie_dbl); lose2=2*lose_dbl*(tie+tie_dbl)+lose**2; lose3=2*lose_dbl*lose; lose4=lose_dbl**2
+    return 4*win4+3*win3+2*win2+win1-2*dbj-4*dbj_dbl-lose1-2*lose2-3*lose3-4*lose4
+  return 2*win**2+2*win*tie-2*dbj-2*lose*tie-2*lose**2
 
 
 
@@ -70,14 +70,14 @@ def double_e2(p):
   return 4.0 * (1.0 - p["tieProb"])
 
 def split_e2(p, das=False):
-  w=p["noDouble"]["winProb"]; t=p["noDouble"]["tieProb"]; l=p["noDouble"]["loseProb"]
-  w2=p["double"]["winProb"]; t2=p["double"]["tieProb"]; l2=p["double"]["loseProb"]
+  win=p["noDouble"]["winProb"]; tie=p["noDouble"]["tieProb"]; lose=p["noDouble"]["loseProb"]
+  win_dbl=p["double"]["winProb"]; tie_dbl=p["double"]["tieProb"]; lose_dbl=p["double"]["loseProb"]
   if das:
-    win4=w2**2; win3=2*w2*w; win2=2*w2*(t+t2)+w**2
-    tie_=2*w2*l2+2*w*l+(t+t2)**2
-    lose2=2*l2*(t+t2)+l**2; lose3=2*l2*l; lose4=l2**2
-    return 1+15*(win4+lose4)+8*(win3+lose3)+3*(win2+lose2)-tie_
-  return 1 + 3*(w**2+l**2) - (2*w*l + t**2)
+    win4=win_dbl**2; win3=2*win_dbl*win; win2=2*win_dbl*(tie+tie_dbl)+win**2
+    tie_var=2*win_dbl*lose_dbl+2*win*lose+(tie+tie_dbl)**2
+    lose2=2*lose_dbl*(tie+tie_dbl)+lose**2; lose3=2*lose_dbl*lose; lose4=lose_dbl**2
+    return 1+15*(win4+lose4)+8*(win3+lose3)+3*(win2+lose2)-tie_var
+  return 1 + 3*(win**2+lose**2) - (2*win*lose + tie**2)
 
 def surr_e2(ui, enhc, decks):
   new_counts = 52 * decks

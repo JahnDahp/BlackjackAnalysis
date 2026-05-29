@@ -39,11 +39,6 @@ def code_to_int(code: str, can_double: bool) -> int:
 def build_strategy_arrays(
   hard_choices, soft_choices, das: bool, is_split: bool
 ) -> tuple[list[int], list[int], list[int], list[int]]:
-  """
-  Returns (hard_dbl, soft_dbl, hard_nodbl, soft_nodbl):
-    - *_dbl:   actions when doubling IS allowed (2-card hand, DAS if split)
-    - *_nodbl: actions when doubling is NOT allowed (3+ cards, or split without DAS)
-  """
   hard_dbl = [_NONE] * 22
   soft_dbl = [_NONE] * 22
   hard_nodbl = [_NONE] * 22
@@ -104,10 +99,6 @@ def hand_is_soft(cards: list[int]) -> bool:
 
 
 class Shoe:
-  """
-  Shoe backed by an integer count array.
-  Each draw calls random.randrange directly for correctness.
-  """
   __slots__ = ("deck_number", "counts", "_total")
 
   def __init__(self, deck_number: int) -> None:
