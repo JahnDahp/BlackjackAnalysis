@@ -248,15 +248,15 @@ def main() -> None:
   split_ds = get_ds(load(data_dir, "split.json")["probs"], DECKS, S17, ENHC)
 
   tables = [
-    ("Hard", build_hsd_matrix(stand_ds, hit_ds, double_ds, "hard", range(21, 3, -1), z)),
-    ("Soft", build_hsd_matrix(stand_ds, hit_ds, double_ds, "soft", range(21, 12, -1), z)),
-    ("Pairs_DAS", build_pairs_matrix(stand_ds, hit_ds, double_ds, split_ds["DAS"], das=True, z=z)),
-    ("Pairs_NDAS", build_pairs_matrix(stand_ds, hit_ds, double_ds, split_ds["nDAS"], das=False, z=z)),
+    ("hard", build_hsd_matrix(stand_ds, hit_ds, double_ds, "hard", range(21, 3, -1), z)),
+    ("soft", build_hsd_matrix(stand_ds, hit_ds, double_ds, "soft", range(21, 12, -1), z)),
+    ("pairs_das", build_pairs_matrix(stand_ds, hit_ds, double_ds, split_ds["DAS"], das=True, z=z)),
+    ("pairs_ndas", build_pairs_matrix(stand_ds, hit_ds, double_ds, split_ds["nDAS"], das=False, z=z)),
   ]
 
   overall_max = 0
   for name, df in tables:
-    path = os.path.join(out_dir, f"{name}_Iterations.csv")
+    path = os.path.join(out_dir, f"{name}_iterations.csv")
     df.to_csv(path)
     mx = int(df.values.max())
     overall_max = max(overall_max, mx)

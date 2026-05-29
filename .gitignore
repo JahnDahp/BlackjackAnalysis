@@ -4,6 +4,6 @@ __pycache__
 *SIM.csv
 *Iterations.csv
 *RL.csv
-Outputs/Simulations/SIM_*/
-Outputs/RL/RL_*/
+outputs/outputs_sim/SIM_*/
+Outputs/outputs_rl/RL_*/
 *.png

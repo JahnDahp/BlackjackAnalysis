@@ -282,7 +282,7 @@ def output_folder(base_dir: str) -> Path:
   from datetime import datetime
   now = datetime.now()
   stamp = now.strftime(f"SIM_{now.month}_{now.day}_{now.year}_%H-%M")
-  return Path(base_dir) / "Outputs" / "Simulations" / stamp
+  return Path(base_dir) / "outputs_sim" / stamp
 
 
 
