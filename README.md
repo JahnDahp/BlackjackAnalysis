@@ -98,9 +98,9 @@ Runs the simulator at increasing iteration counts (100 → 1K → 10K → 100K) 
 
 ## Reinforcement Learning
 
-The RL module trains a Q-table by playing out millions of random hands and updating action values based on actual outcomes. No access to the probability tables — strategy is learned purely from experience.
+The RL module trains a Q-table by playing out millions of random hands and updating action values based on outcomes.
 
-The RL equivalent of an iteration is an episode — a single sampled hand against a single upcard, training one action at one cell. There are 1,210 state-action pairs in total: 180 hard cells × 3 actions + 90 soft cells × 3 actions + 100 pair cells × 4 actions (hit, stand, double, split) = 540 + 270 + 400 = 1,210. One episode covers one of these pairs, so the equivalent per-cell iteration count is episodes ÷ 1,210. The convergence plot runs at 1,210× the simulator's iteration milestones so the x-axes are directly comparable.
+The RL equivalent of an iteration is an episode, or a single sampled hand against a single upcard, training one action at one cell. There are 1,210 state-action pairs in total: 180 hard cells × 3 actions + 90 soft cells × 3 actions + 100 pair cells × 4 actions (hit, stand, double, split) = 540 + 270 + 400 = 1,210. One episode covers one of these pairs, so the equivalent per-cell iteration count is episodes / 1,210. The convergence plot runs at 1,240× the simulator's iteration milestones so the x-axes are directly comparable.
 
 **Train and output a strategy:**
 
