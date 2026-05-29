@@ -239,8 +239,9 @@ def calc_and_save_iterations(
         json_index = json_idx(upcard_index)
 
         def pe(ds_ht, json_index=json_index):
+          def rank(c): return c["rank"] if isinstance(c, dict) else c
           return[e for e in ds_ht[ht][json_index]
-               if len(e[0])==2 and e[0][0]["rank"]==pair_rank and e[0][1]["rank"]==pair_rank]
+               if len(e[0])==2 and rank(e[0][0])==pair_rank and rank(e[0][1])==pair_rank]
         stand_entries=pe(stand_ds); hit_entries=pe(hit_ds); d_e=pe(dbl_ds)
         sp=spl_ds[das_key][json_index][pair_rank-1][1]
         evs={"P":(sp_ev(sp,das),sp_var(sp,das))}
@@ -282,7 +283,7 @@ def output_folder(base_dir: str) -> Path:
   from datetime import datetime
   now = datetime.now()
   stamp = now.strftime(f"SIM_{now.month}_{now.day}_{now.year}_%H-%M")
-  return Path(base_dir) / "outputs_sim" / stamp
+  return Path(base_dir) / "outputs" / "outputs_sim" / stamp
 
 
 

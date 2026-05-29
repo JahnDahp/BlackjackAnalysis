@@ -22,8 +22,7 @@ BlackjackAnalysis/
 │   └── run_calc.py                     # Regenerate data files
 ├── sim/
 │   ├── blackjack_sim.py                # Monte Carlo strategy simulator
-│   ├── plot_sim.py                     # Plot simulator convergence
-│   └── iterations_from_confidence.py   # Compute required iterations per cell
+│   └── plot_sim.py                     # Plot simulator convergence
 └── reinforcement_learning/
     ├── blackjack_rl.py                 # Train Q-table via reinforcement learning
     └── plot_rl.py                      # Plot RL convergence
@@ -94,14 +93,6 @@ python sim/plot_sim.py [--decks N] [--s17|--h17] [--enhc] [--das|--ndas] [--work
 ```
 
 Runs the simulator at increasing iteration counts (100 → 1K → 10K → 100K) and plots the number of incorrect decisions at each level. Saves to `sim_convergence_plot.png`.
-
-**Compute required iterations:**
-
-```
-python sim/iterations_from_confidence.py [--confidence N]
-```
-
-Uses worst-case rules (8D H17 ENHC) as an upper bound to compute the minimum iterations per cell needed at a given confidence level. Outputs CSV files to the script directory.
 
 ---
 
