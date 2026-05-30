@@ -19,6 +19,7 @@ BlackjackAnalysis/
 │   ├── blackjack_calc.py               # Exact EV calculator
 │   ├── calc_ev.py                      # Print EV tables for a given rule set
 │   ├── game.py                         # Strategy chart + EV by ruleset
+│   ├── plot_ra.py                      # Plot SD/hour vs. risk-aversion coefficient
 │   └── run_calc.py                     # Regenerate data files
 ├── sim/
 │   ├── blackjack_sim.py                # Monte Carlo strategy simulator
@@ -60,6 +61,14 @@ python calculator/game.py [--decks N] [--s17|--h17] [--enhc|--us] [--das|--ndas]
 ```
 
 Prints color-coded hard, soft, and pair basic strategy charts and computes the overall player EV under optimal play, including hourly EV and standard deviation estimates given a flat bet size. Also allows for generating risk-averse basic strategy charts and hourly EV and standard deviation given a risk-aversion coefficient using the certainty equivalent formula.
+
+**Plot EV ± 1 SD vs. risk aversion:**
+
+```
+python calculator/plot_ra.py [--decks N] [--s17|--h17] [--enhc|--us] [--das|--ndas] [--surrender|--no-surrender] [--bet N]
+```
+
+Plots EV/hour, EV + 1 SD, and EV − 1 SD as three separate lines at λ = 0.00 through 0.25 in steps of 0.01 using the exact probability calculator. Shows how risk-averse strategy trades EV for reduced variance. Saves to `ra_ev_plot.png`.
 
 **Regenerate the Data/ JSON lookup tables:**
 

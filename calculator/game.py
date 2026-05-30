@@ -33,23 +33,23 @@ def colored(text, code):
 
 
 
-def ev_from_probabilities(p):
-  return p["winProb"] - p["loseProb"] - p["DBJ"]
+def ev_from_probabilities(probs):
+  return probs["winProb"] - probs["loseProb"] - probs["DBJ"]
 
-def stand_ev(p, hand):
+def stand_ev(probs, hand):
   if len(hand) == 2 and hand_total(hand) == 21:
-    return (1 - p["DBJ"]) * 1.5
-  return ev_from_probabilities(p)
+    return (1 - probs["DBJ"]) * 1.5
+  return ev_from_probabilities(probs)
 
-def hit_ev(p):
-  return ev_from_probabilities(p)
+def hit_ev(probs):
+  return ev_from_probabilities(probs)
 
-def double_ev(p):
-  return 2.0 * ev_from_probabilities(p)
+def double_ev(probs):
+  return 2.0 * ev_from_probabilities(probs)
 
-def split_ev(p, das=False):
-  win_dbl=p["double"]["winProb"]; tie_dbl=p["double"]["tieProb"]; lose_dbl=p["double"]["loseProb"]; dbj_dbl=p["double"]["DBJ"]
-  win=p["noDouble"]["winProb"]; tie=p["noDouble"]["tieProb"]; lose=p["noDouble"]["loseProb"]; dbj=p["noDouble"]["DBJ"]
+def split_ev(probs, das=False):
+  win_dbl=probs["double"]["winProb"]; tie_dbl=probs["double"]["tieProb"]; lose_dbl=probs["double"]["loseProb"]; dbj_dbl=probs["double"]["DBJ"]
+  win=probs["noDouble"]["winProb"]; tie=probs["noDouble"]["tieProb"]; lose=probs["noDouble"]["loseProb"]; dbj=probs["noDouble"]["DBJ"]
   if das:
     win4=win_dbl**2; win3=2*win_dbl*win; win2=2*win_dbl*(tie+tie_dbl)+win**2; win1=2*win_dbl*lose+2*win*(tie+tie_dbl)
     lose1=2*lose_dbl*win+2*lose*(tie+tie_dbl); lose2=2*lose_dbl*(tie+tie_dbl)+lose**2; lose3=2*lose_dbl*lose; lose4=lose_dbl**2
@@ -58,20 +58,20 @@ def split_ev(p, das=False):
 
 
 
-def stand_e2(p, hand):
+def stand_second_moment(probs, hand):
   if len(hand) == 2 and hand_total(hand) == 21:
-    return 2.25 * (1.0 - p["DBJ"])
-  return 1.0 - p["tieProb"]
+    return 2.25 * (1.0 - probs["DBJ"])
+  return 1.0 - probs["tieProb"]
 
-def hit_e2(p):
-  return 1.0 - p["tieProb"]
+def hit_second_moment(probs):
+  return 1.0 - probs["tieProb"]
 
-def double_e2(p):
-  return 4.0 * (1.0 - p["tieProb"])
+def double_second_moment(probs):
+  return 4.0 * (1.0 - probs["tieProb"])
 
-def split_e2(p, das=False):
-  win=p["noDouble"]["winProb"]; tie=p["noDouble"]["tieProb"]; lose=p["noDouble"]["loseProb"]
-  win_dbl=p["double"]["winProb"]; tie_dbl=p["double"]["tieProb"]; lose_dbl=p["double"]["loseProb"]
+def split_second_moment(probs, das=False):
+  win=probs["noDouble"]["winProb"]; tie=probs["noDouble"]["tieProb"]; lose=probs["noDouble"]["loseProb"]
+  win_dbl=probs["double"]["winProb"]; tie_dbl=probs["double"]["tieProb"]; lose_dbl=probs["double"]["loseProb"]
   if das:
     win4=win_dbl**2; win3=2*win_dbl*win; win2=2*win_dbl*(tie+tie_dbl)+win**2
     tie_var=2*win_dbl*lose_dbl+2*win*lose+(tie+tie_dbl)**2
@@ -79,192 +79,187 @@ def split_e2(p, das=False):
     return 1+15*(win4+lose4)+8*(win3+lose3)+3*(win2+lose2)-tie_var
   return 1 + 3*(win**2+lose**2) - (2*win*lose + tie**2)
 
-def surr_e2(ui, enhc, decks):
+def surrender_second_moment(upcard_index, enhc, decks):
   new_counts = 52 * decks
-  d = ((16*decks)/(new_counts-1) if ui==0 else (4*decks)/(new_counts-1) if ui==9 else 0.0) if enhc else 0.0
-  return (1-d)*0.25 + d*1.0
+  prob_bj_factor = ((16*decks)/(new_counts-1) if upcard_index==0 else (4*decks)/(new_counts-1) if upcard_index==9 else 0.0) if enhc else 0.0
+  return (1-prob_bj_factor)*0.25 + prob_bj_factor*1.0
 
 
 
 def hand_total(hand):
   total = 0; aces = 0
-  for c in hand:
-    if c == 1: total += 11; aces += 1
-    else: total += c
+  for card in hand:
+    if card == 1: total += 11; aces += 1
+    else: total += card
   while total > 21 and aces: total -= 10; aces -= 1
   return total
 
 def is_soft(hand):
   total = 0; aces = 0
-  for c in hand:
-    if c == 1: total += 11; aces += 1
-    else: total += c
+  for card in hand:
+    if card == 1: total += 11; aces += 1
+    else: total += card
   while total > 21 and aces: total -= 10; aces -= 1
   return aces > 0
 
 def hand_key(hand):
   return tuple(sorted(hand))
 
-def surr_ev(ui, enhc, decks):
+def surrender_ev(upcard_index, enhc, decks):
   if not enhc:
     return -0.5
   new_counts = 52 * decks
-  if ui == 0: return -0.5 - 0.5 * (16 * decks) / (new_counts - 1)
-  if ui == 9: return -0.5 - 0.5 * (4 * decks) / (new_counts - 1)
+  if upcard_index == 0: return -0.5 - 0.5 * (16 * decks) / (new_counts - 1)
+  if upcard_index == 9: return -0.5 - 0.5 * (4 * decks) / (new_counts - 1)
   return -0.5
 
-def ce(ev, e2, ra):
-  """Certainty equivalent: EV - (lambda/2) * Var, where Var = E[X²] - EV²."""
-  return ev - (ra / 2.0) * (e2 - ev ** 2)
+def certainty_equiv(ev, second_moment, risk_aversion):
+  return ev - (risk_aversion / 2.0) * (second_moment - ev ** 2)
 
 
 
-def best_non_split_character(ev_var, surrender=False, s_ev=-0.5, s_e2=0.25, ra=0.0):
-  """Pick the best action by CE. ev_var: {action: (ev, e2)}."""
-  if not ev_var: return "S"
-  best_key = None
-  best_ce = float('-inf')
-  for k, (ev, e2) in ev_var.items():
-    c = ce(ev, e2, ra)
-    if c > best_ce: best_ce = c; best_key = k
-  surr_ce = ce(s_ev, s_e2, ra)
-  if surrender and surr_ce > best_ce:
-    return "R" + best_key
-  return best_key
+def best_non_split_action(ev_variance, surrender=False, surr_ev=-0.5, surr_second_moment=0.25, risk_aversion=0.0):
+  if not ev_variance: return "S"
+  best_action = None
+  best_certainty_equiv = float('-inf')
+  for action, (ev, second_moment) in ev_variance.items():
+    ce_value = certainty_equiv(ev, second_moment, risk_aversion)
+    if ce_value > best_certainty_equiv: best_certainty_equiv = ce_value; best_action = action
+  surrender_ce = certainty_equiv(surr_ev, surr_second_moment, risk_aversion)
+  if surrender and surrender_ce > best_certainty_equiv:
+    return "R" + best_action
+  return best_action
 
 
 
-def build_ev_var_table(stand_dataset, hit_dataset, double_dataset, is_soft_table):
-  def hand_key(hand_cards): return tuple(sorted(hand_cards))
+def build_ev_variance_table(stand_dataset, hit_dataset, double_dataset, is_soft_table):
+  def hand_key_local(hand_cards): return tuple(sorted(hand_cards))
 
-  acc = {}
+  accumulator = {}
   key = "soft" if is_soft_table else "hard"
 
   for upcard_index in range(10):
     stand_map = {}; hit_map = {}; double_map = {}
-    for row in stand_dataset[key][upcard_index]: stand_map[hand_key(row[0])] = (row[1], row[2])
-    for row in hit_dataset[key][upcard_index]: hit_map[hand_key(row[0])] = (row[1], row[2])
-    for row in double_dataset[key][upcard_index]: double_map[hand_key(row[0])] = (row[1], row[2])
+    for row in stand_dataset[key][upcard_index]: stand_map[hand_key_local(row[0])] = (row[1], row[2])
+    for row in hit_dataset[key][upcard_index]: hit_map[hand_key_local(row[0])] = (row[1], row[2])
+    for row in double_dataset[key][upcard_index]: double_map[hand_key_local(row[0])] = (row[1], row[2])
 
     for hand in set(stand_map) | set(hit_map) | set(double_map):
       if is_soft_table != is_soft(hand): continue
       if len(hand) != 2: continue
       total = hand_total(hand)
       cell_key = (upcard_index, total)
-      if cell_key not in acc: acc[cell_key] = {}
+      if cell_key not in accumulator: accumulator[cell_key] = {}
 
       if hand in stand_map:
-        prob, r = stand_map[hand]
-        ev_val = stand_ev(r, hand)
-        e2_val = stand_e2(r, hand)
-        cell = acc[cell_key].setdefault("S", [0.0, 0.0, 0.0])
-        cell[0] += ev_val * prob; cell[1] += e2_val * prob; cell[2] += prob
+        prob, row = stand_map[hand]
+        ev_value = stand_ev(row, hand)
+        second_moment_value = stand_second_moment(row, hand)
+        cell = accumulator[cell_key].setdefault("S", [0.0, 0.0, 0.0])
+        cell[0] += ev_value * prob; cell[1] += second_moment_value * prob; cell[2] += prob
 
       if hand in hit_map:
-        prob, r = hit_map[hand]
-        ev_val = hit_ev(r)
-        e2_val = hit_e2(r)
-        cell = acc[cell_key].setdefault("H", [0.0, 0.0, 0.0])
-        cell[0] += ev_val * prob; cell[1] += e2_val * prob; cell[2] += prob
+        prob, row = hit_map[hand]
+        ev_value = hit_ev(row)
+        second_moment_value = hit_second_moment(row)
+        cell = accumulator[cell_key].setdefault("H", [0.0, 0.0, 0.0])
+        cell[0] += ev_value * prob; cell[1] += second_moment_value * prob; cell[2] += prob
 
       if hand in double_map:
-        prob, r = double_map[hand]
-        ev_val = double_ev(r)
-        e2_val = double_e2(r)
-        h_ev = hit_ev(hit_map[hand][1]) if hand in hit_map else -999.0
-        s_ev_v = stand_ev(stand_map[hand][1], hand) if hand in stand_map else -999.0
-        d_key = "Dh" if h_ev > s_ev_v else "Ds"
-        cell = acc[cell_key].setdefault(d_key, [0.0, 0.0, 0.0])
-        cell[0] += ev_val * prob; cell[1] += e2_val * prob; cell[2] += prob
+        prob, row = double_map[hand]
+        ev_value = double_ev(row)
+        second_moment_value = double_second_moment(row)
+        hit_ev_value = hit_ev(hit_map[hand][1]) if hand in hit_map else -999.0
+        stand_ev_value = stand_ev(stand_map[hand][1], hand) if hand in stand_map else -999.0
+        double_key = "Dh" if hit_ev_value > stand_ev_value else "Ds"
+        cell = accumulator[cell_key].setdefault(double_key, [0.0, 0.0, 0.0])
+        cell[0] += ev_value * prob; cell[1] += second_moment_value * prob; cell[2] += prob
 
   result = {}
-  for cell_key, decisions in acc.items():
+  for cell_key, decisions in accumulator.items():
     result[cell_key] = {}
-    for dec, (sum_ev, sum_e2, sum_prob) in decisions.items():
+    for action, (sum_ev, sum_second_moment, sum_prob) in decisions.items():
       if sum_prob > 0:
-        result[cell_key][dec] = (sum_ev / sum_prob, sum_e2 / sum_prob)
+        result[cell_key][action] = (sum_ev / sum_prob, sum_second_moment / sum_prob)
   return result
 
 
 
 def split_decision_chart(split_dataset_das, split_dataset_ndas, stand_dataset, hit_dataset,
-                          double_dataset, pair_val, upcard_index, surrender=False, ra=0.0):
-  def get_split_ev_e2(dataset, das=False):
+                          double_dataset, pair_val, upcard_index, surrender=False, risk_aversion=0.0):
+  def get_split_ev_and_second_moment(dataset, das=False):
     for row in dataset[upcard_index]:
       if row[0][0] == pair_val:
-        ev = split_ev(row[1], das)
-        e2 = split_e2(row[1], das)
-        return ev, e2
+        return split_ev(row[1], das), split_second_moment(row[1], das)
     return None, None
 
-  das_ev, das_e2 = get_split_ev_e2(split_dataset_das, das=True)
-  ndas_ev, ndas_e2 = get_split_ev_e2(split_dataset_ndas, das=False)
+  das_split_ev, das_split_second_moment = get_split_ev_and_second_moment(split_dataset_das, das=True)
+  ndas_split_ev, ndas_split_second_moment = get_split_ev_and_second_moment(split_dataset_ndas, das=False)
 
   pair_hand = (pair_val, pair_val)
   key_type = "soft" if is_soft(pair_hand) else "hard"
-  non_split_ev_var = {}
+  non_split_ev_variance = {}
 
   for label, dataset in (("S", stand_dataset), ("H", hit_dataset)):
     for row in dataset[key_type][upcard_index]:
       if hand_key(row[0]) == pair_hand:
         if label == "S":
-          non_split_ev_var["S"] = (stand_ev(row[2], pair_hand), stand_e2(row[2], pair_hand))
+          non_split_ev_variance["S"] = (stand_ev(row[2], pair_hand), stand_second_moment(row[2], pair_hand))
         else:
-          non_split_ev_var["H"] = (hit_ev(row[2]), hit_e2(row[2]))
+          non_split_ev_variance["H"] = (hit_ev(row[2]), hit_second_moment(row[2]))
         break
   for row in double_dataset[key_type][upcard_index]:
     if hand_key(row[0]) == pair_hand:
-      h_ev = non_split_ev_var["H"][0] if "H" in non_split_ev_var else -999.0
-      s_ev_v = non_split_ev_var["S"][0] if "S" in non_split_ev_var else -999.0
-      d_key = "Dh" if h_ev > s_ev_v else "Ds"
-      non_split_ev_var[d_key] = (double_ev(row[2]), double_e2(row[2]))
+      hit_ev_value = non_split_ev_variance["H"][0] if "H" in non_split_ev_variance else -999.0
+      stand_ev_value = non_split_ev_variance["S"][0] if "S" in non_split_ev_variance else -999.0
+      double_key = "Dh" if hit_ev_value > stand_ev_value else "Ds"
+      non_split_ev_variance[double_key] = (double_ev(row[2]), double_second_moment(row[2]))
       break
 
-  best_ns_code = best_non_split_character(non_split_ev_var, ra=ra)
-  best_ns_ev = non_split_ev_var[best_ns_code][0] if best_ns_code in non_split_ev_var else 0.0
-  best_ns_e2 = non_split_ev_var[best_ns_code][1] if best_ns_code in non_split_ev_var else 1.0
-  best_ns_ce = ce(best_ns_ev, best_ns_e2, ra)
+  best_non_split_code = best_non_split_action(non_split_ev_variance, risk_aversion=risk_aversion)
+  best_non_split_ev_value = non_split_ev_variance[best_non_split_code][0] if best_non_split_code in non_split_ev_variance else 0.0
+  best_non_split_second_moment = non_split_ev_variance[best_non_split_code][1] if best_non_split_code in non_split_ev_variance else 1.0
+  best_non_split_ce = certainty_equiv(best_non_split_ev_value, best_non_split_second_moment, risk_aversion)
 
-  das_ce = ce(das_ev, das_e2, ra) if das_ev is not None else None
-  ndas_ce = ce(ndas_ev, ndas_e2, ra) if ndas_ev is not None else None
+  das_ce = certainty_equiv(das_split_ev, das_split_second_moment, risk_aversion) if das_split_ev is not None else None
+  ndas_ce = certainty_equiv(ndas_split_ev, ndas_split_second_moment, risk_aversion) if ndas_split_ev is not None else None
 
-  das_better = das_ce is not None and das_ce > best_ns_ce
-  ndas_better = ndas_ce is not None and ndas_ce > best_ns_ce
+  das_better = das_ce is not None and das_ce > best_non_split_ce
+  ndas_better = ndas_ce is not None and ndas_ce > best_non_split_ce
 
-  s_ev_val = -0.5; s_e2_val = 0.25
-  surr_ce_val = ce(s_ev_val, s_e2_val, ra)
+  surrender_ce = certainty_equiv(-0.5, 0.25, risk_aversion)
 
   if das_better and ndas_better:
-    return "RP" if (surrender and surr_ce_val > das_ce) else "P"
+    return "RP" if (surrender and surrender_ce > das_ce) else "P"
   elif das_better:
-    return "RP?" if (surrender and surr_ce_val > das_ce) else "P?"
+    return "RP?" if (surrender and surrender_ce > das_ce) else "P?"
   else:
-    if surrender and surr_ce_val > best_ns_ce:
-      return "R" + best_ns_code
-    return best_ns_code
+    if surrender and surrender_ce > best_non_split_ce:
+      return "R" + best_non_split_code
+    return best_non_split_code
 
 
 
 UPCARD_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]
 UPCARD_LABELS = ["2","3","4","5","6","7","8","9","10","A"]
 
-def pad(s, width):
-  visible = len(s.replace(RESET,"").replace(BOLD,"").replace(RED,"").replace(GREEN,"")
+def pad(text, width):
+  visible = len(text.replace(RESET,"").replace(BOLD,"").replace(RED,"").replace(GREEN,"")
                .replace(YELLOW,"").replace(ORANGE,"").replace(CYAN,"").replace(TEAL,"")
                .replace(WHITE,"").replace(DIM,"").replace(MAGENTA,""))
-  p = max(0, width - visible)
-  return " " * (p // 2) + s + " " * (p - p // 2)
+  padding = max(0, width - visible)
+  return " " * (padding // 2) + text + " " * (padding - padding // 2)
 
 def print_table(title, row_labels, rows):
-  col_w, row_lw = 6, 6
-  sep = DIM + "─" * (row_lw + 1 + (col_w + 1) * len(UPCARD_LABELS)) + RESET
+  col_width, row_label_width = 6, 6
+  separator = DIM + "─" * (row_label_width + 1 + (col_width + 1) * len(UPCARD_LABELS)) + RESET
   print(f"\n{BOLD}{WHITE}{title}{RESET}")
-  print(sep)
-  print(f"{'':>{row_lw}} │" + "│".join(pad(l, col_w) for l in UPCARD_LABELS))
-  print(sep)
+  print(separator)
+  print(f"{'':>{row_label_width}} │" + "│".join(pad(label, col_width) for label in UPCARD_LABELS))
+  print(separator)
   for label, row in zip(row_labels, rows):
-    print(f"{label:>{row_lw}} │" + "│".join(pad(colored(code, code), col_w) for code in row))
-  print(sep)
+    print(f"{label:>{row_label_width}} │" + "│".join(pad(colored(code, code), col_width) for code in row))
+  print(separator)
 
 def print_legend():
   items = [
@@ -283,121 +278,128 @@ def print_legend():
 
 
 
-def build_strategy_matrix(stand_ds, hit_ds, double_ds, split_das_ds, split_ndas_ds,
-                           das=True, surrender=False, enhc=False, decks=6, ra=0.0):
-  hard_ev_var = build_ev_var_table(stand_ds, hit_ds, double_ds, False)
-  soft_ev_var = build_ev_var_table(stand_ds, hit_ds, double_ds, True)
+def build_strategy_matrix(stand_dataset, hit_dataset, double_dataset, split_das_dataset, split_ndas_dataset,
+                           das=True, surrender=False, enhc=False, decks=6, risk_aversion=0.0):
+  hard_ev_variance = build_ev_variance_table(stand_dataset, hit_dataset, double_dataset, False)
+  soft_ev_variance = build_ev_variance_table(stand_dataset, hit_dataset, double_dataset, True)
 
   hard_matrix = {}
   soft_matrix = {}
-  for (ui, total), ev_var in hard_ev_var.items():
-    s_ev_v = surr_ev(ui, enhc, decks); s_e2_v = surr_e2(ui, enhc, decks)
-    hard_matrix[(ui, total)] = best_non_split_character(ev_var, surrender, s_ev_v, s_e2_v, ra)
-  for (ui, total), ev_var in soft_ev_var.items():
-    s_ev_v = surr_ev(ui, enhc, decks); s_e2_v = surr_e2(ui, enhc, decks)
-    soft_matrix[(ui, total)] = best_non_split_character(ev_var, surrender, s_ev_v, s_e2_v, ra)
+  for (upcard_index, total), ev_variance in hard_ev_variance.items():
+    surrender_ev_value = surrender_ev(upcard_index, enhc, decks)
+    surrender_second_moment_value = surrender_second_moment(upcard_index, enhc, decks)
+    hard_matrix[(upcard_index, total)] = best_non_split_action(
+      ev_variance, surrender, surrender_ev_value, surrender_second_moment_value, risk_aversion)
+  for (upcard_index, total), ev_variance in soft_ev_variance.items():
+    surrender_ev_value = surrender_ev(upcard_index, enhc, decks)
+    surrender_second_moment_value = surrender_second_moment(upcard_index, enhc, decks)
+    soft_matrix[(upcard_index, total)] = best_non_split_action(
+      ev_variance, surrender, surrender_ev_value, surrender_second_moment_value, risk_aversion)
 
   def build_split_lookup(dataset):
     lookup = {}
-    for ui, rows in enumerate(dataset):
-      for row in rows: lookup[(hand_key(row[0]), ui)] = row[1]
+    for upcard_index, rows in enumerate(dataset):
+      for row in rows: lookup[(hand_key(row[0]), upcard_index)] = row[1]
     return lookup
 
-  split_das_lkp = build_split_lookup(split_das_ds)
-  split_ndas_lkp = build_split_lookup(split_ndas_ds)
+  split_das_lookup = build_split_lookup(split_das_dataset)
+  split_ndas_lookup = build_split_lookup(split_ndas_dataset)
 
   pair_matrix = {}
   for pair_val in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
-    hand_key = hand_key([pair_val, pair_val])
-    for ui in range(10):
-      s_ev_v = surr_ev(ui, enhc, decks); s_e2_v = surr_e2(ui, enhc, decks)
-      total = hand_total(list(hand_key))
-      ev_var = (soft_ev_var if is_soft(list(hand_key)) else hard_ev_var).get((ui, total), {})
-      best_ns = best_non_split_character(ev_var, surrender, s_ev_v, s_e2_v, ra)
-      if best_ns.startswith("R"):
-        best_ns_ce_val = ce(s_ev_v, s_e2_v, ra)
+    pair_hand_key = hand_key([pair_val, pair_val])
+    for upcard_index in range(10):
+      surrender_ev_value = surrender_ev(upcard_index, enhc, decks)
+      surrender_second_moment_value = surrender_second_moment(upcard_index, enhc, decks)
+      total = hand_total(list(pair_hand_key))
+      ev_variance = (soft_ev_variance if is_soft(list(pair_hand_key)) else hard_ev_variance).get((upcard_index, total), {})
+      best_non_split = best_non_split_action(ev_variance, surrender, surrender_ev_value, surrender_second_moment_value, risk_aversion)
+      if best_non_split.startswith("R"):
+        best_non_split_ce = certainty_equiv(surrender_ev_value, surrender_second_moment_value, risk_aversion)
       else:
-        ns_ev, ns_e2 = ev_var.get(best_ns, (s_ev_v, s_e2_v))
-        best_ns_ce_val = ce(ns_ev, ns_e2, ra)
+        non_split_ev, non_split_second_moment = ev_variance.get(best_non_split, (surrender_ev_value, surrender_second_moment_value))
+        best_non_split_ce = certainty_equiv(non_split_ev, non_split_second_moment, risk_aversion)
 
-      lookup = split_das_lkp if das else split_ndas_lkp
-      if (hand_key, ui) in lookup:
-        sp_ev = split_ev(lookup[(hand_key, ui)], das=das)
-        sp_e2 = split_e2(lookup[(hand_key, ui)], das=das)
-        sp_ce = ce(sp_ev, sp_e2, ra)
-        if sp_ce > best_ns_ce_val:
-          code = "RP" if (surrender and ce(s_ev_v, s_e2_v, ra) > sp_ce) else "P"
+      split_lookup = split_das_lookup if das else split_ndas_lookup
+      if (pair_hand_key, upcard_index) in split_lookup:
+        split_ev_value = split_ev(split_lookup[(pair_hand_key, upcard_index)], das=das)
+        split_second_moment_value = split_second_moment(split_lookup[(pair_hand_key, upcard_index)], das=das)
+        split_ce = certainty_equiv(split_ev_value, split_second_moment_value, risk_aversion)
+        if split_ce > best_non_split_ce:
+          code = "RP" if (surrender and certainty_equiv(surrender_ev_value, surrender_second_moment_value, risk_aversion) > split_ce) else "P"
         else:
-          code = best_ns
+          code = best_non_split
       else:
-        code = best_ns
-      pair_matrix[(ui, pair_val)] = code
+        code = best_non_split
+      pair_matrix[(upcard_index, pair_val)] = code
 
   return hard_matrix, soft_matrix, pair_matrix
 
 
 
-def ev_for_code(code, hand, ui, stand_lkp, hit_lkp, double_lkp, split_das_lkp, split_ndas_lkp, das, enhc=False, decks=6):
-  hand_key = hand_key(hand)
+def ev_for_code(code, hand, upcard_index, stand_lookup, hit_lookup, double_lookup,
+                split_das_lookup, split_ndas_lookup, das, enhc=False, decks=6):
+  hand_tuple = hand_key(hand)
   if code == "P":
-    lookup = split_das_lkp if das else split_ndas_lkp
-    if (hand_key, ui) in lookup: return split_ev(lookup[(hand_key, ui)], das=das)
+    lookup = split_das_lookup if das else split_ndas_lookup
+    if (hand_tuple, upcard_index) in lookup: return split_ev(lookup[(hand_tuple, upcard_index)], das=das)
   if code.startswith("R"):
-    return surr_ev(ui, enhc, decks)
+    return surrender_ev(upcard_index, enhc, decks)
   if code in ("Dh", "Ds"):
-    if (hand_key, ui) in double_lkp: return double_ev(double_lkp[(hand_key, ui)][1])
+    if (hand_tuple, upcard_index) in double_lookup: return double_ev(double_lookup[(hand_tuple, upcard_index)][1])
     action = "H" if code == "Dh" else "S"
   else:
     action = code
-  if action == "S" and (hand_key, ui) in stand_lkp: return stand_ev(stand_lkp[(hand_key, ui)][1], hand)
-  if action == "H" and (hand_key, ui) in hit_lkp: return hit_ev(hit_lkp[(hand_key, ui)][1])
+  if action == "S" and (hand_tuple, upcard_index) in stand_lookup: return stand_ev(stand_lookup[(hand_tuple, upcard_index)][1], hand)
+  if action == "H" and (hand_tuple, upcard_index) in hit_lookup: return hit_ev(hit_lookup[(hand_tuple, upcard_index)][1])
   return None
 
-def e2_for_code(code, hand, ui, stand_lkp, hit_lkp, double_lkp, split_das_lkp, split_ndas_lkp, das, enhc, decks):
-  hand_key = hand_key(hand)
+def second_moment_for_code(code, hand, upcard_index, stand_lookup, hit_lookup, double_lookup,
+                            split_das_lookup, split_ndas_lookup, das, enhc, decks):
+  hand_tuple = hand_key(hand)
   if code.startswith("R"):
-    return surr_e2(ui, enhc, decks)
+    return surrender_second_moment(upcard_index, enhc, decks)
   if code == "P":
-    lookup = split_das_lkp if das else split_ndas_lkp
-    if (hand_key, ui) in lookup: return split_e2(lookup[(hand_key, ui)], das=das)
+    lookup = split_das_lookup if das else split_ndas_lookup
+    if (hand_tuple, upcard_index) in lookup: return split_second_moment(lookup[(hand_tuple, upcard_index)], das=das)
     return None
   if code in ("Dh", "Ds"):
-    if (hand_key, ui) in double_lkp: return double_e2(double_lkp[(hand_key, ui)][1])
+    if (hand_tuple, upcard_index) in double_lookup: return double_second_moment(double_lookup[(hand_tuple, upcard_index)][1])
     action = "H" if code == "Dh" else "S"
   else:
     action = code
-  lookup = stand_lkp if action == "S" else hit_lkp
-  if (hand_key, ui) not in lookup: return None
-  r = lookup[(hand_key, ui)][1]
-  if action == "S": return stand_e2(r, hand)
-  return hit_e2(r)
+  lookup = stand_lookup if action == "S" else hit_lookup
+  if (hand_tuple, upcard_index) not in lookup: return None
+  row = lookup[(hand_tuple, upcard_index)][1]
+  if action == "S": return stand_second_moment(row, hand)
+  return hit_second_moment(row)
 
 
 
-def compute_game_ev(stand_ds, hit_ds, double_ds, split_das_ds, split_ndas_ds,
-                    das=True, surrender=False, decks=6, enhc=False, ra=0.0):
+def compute_game_ev(stand_dataset, hit_dataset, double_dataset, split_das_dataset, split_ndas_dataset,
+                    das=True, surrender=False, decks=6, enhc=False, risk_aversion=0.0):
   hard_matrix, soft_matrix, pair_matrix = build_strategy_matrix(
-    stand_ds, hit_ds, double_ds, split_das_ds, split_ndas_ds,
-    das, surrender, enhc=enhc, decks=decks, ra=ra)
+    stand_dataset, hit_dataset, double_dataset, split_das_dataset, split_ndas_dataset,
+    das, surrender, enhc=enhc, decks=decks, risk_aversion=risk_aversion)
 
   def build_lookup(dataset):
     lookup = {}
     for key_type in ("hard", "soft"):
-      for ui, rows in enumerate(dataset[key_type]):
-        for row in rows: lookup[(hand_key(row[0]), ui)] = (row[1], row[2])
+      for upcard_index, rows in enumerate(dataset[key_type]):
+        for row in rows: lookup[(hand_key(row[0]), upcard_index)] = (row[1], row[2])
     return lookup
 
   def build_split_lookup(dataset):
     lookup = {}
-    for ui, rows in enumerate(dataset):
-      for row in rows: lookup[(hand_key(row[0]), ui)] = row[1]
+    for upcard_index, rows in enumerate(dataset):
+      for row in rows: lookup[(hand_key(row[0]), upcard_index)] = row[1]
     return lookup
 
-  stand_lkp = build_lookup(stand_ds)
-  hit_lkp = build_lookup(hit_ds)
-  double_lkp = build_lookup(double_ds)
-  split_das_lkp = build_split_lookup(split_das_ds)
-  split_ndas_lkp = build_split_lookup(split_ndas_ds)
+  stand_lookup = build_lookup(stand_dataset)
+  hit_lookup = build_lookup(hit_dataset)
+  double_lookup = build_lookup(double_dataset)
+  split_das_lookup = build_split_lookup(split_das_dataset)
+  split_ndas_lookup = build_split_lookup(split_ndas_dataset)
 
   new_counts = 52 * decks
   bj_factors = [1.0] * 10
@@ -406,121 +408,122 @@ def compute_game_ev(stand_ds, hit_ds, double_ds, split_das_ds, split_ndas_ds,
     bj_factors[9] = 1.0 - (4 * decks) / (new_counts - 1)
 
   all_entries = {}
-  for (hand_key, ui), (prob, _) in stand_lkp.items():
-    if len(hand_key) == 2:
-      w = (1.0 if hand_key[0] == hand_key[1] else 2.0) * bj_factors[ui]
-      all_entries[(hand_key, ui)] = prob * w
-  for (hand_key, ui), (prob, _) in hit_lkp.items():
-    if len(hand_key) == 2 and (hand_key, ui) not in all_entries:
-      w = (1.0 if hand_key[0] == hand_key[1] else 2.0) * bj_factors[ui]
-      all_entries[(hand_key, ui)] = prob * w
+  for (hand_tuple, upcard_index), (prob, _) in stand_lookup.items():
+    if len(hand_tuple) == 2:
+      weight = (1.0 if hand_tuple[0] == hand_tuple[1] else 2.0) * bj_factors[upcard_index]
+      all_entries[(hand_tuple, upcard_index)] = prob * weight
+  for (hand_tuple, upcard_index), (prob, _) in hit_lookup.items():
+    if len(hand_tuple) == 2 and (hand_tuple, upcard_index) not in all_entries:
+      weight = (1.0 if hand_tuple[0] == hand_tuple[1] else 2.0) * bj_factors[upcard_index]
+      all_entries[(hand_tuple, upcard_index)] = prob * weight
 
-  total_ev = 0.0; sum_e2 = 0.0; breakdown = {}
-  for (hand_key, ui), prob in all_entries.items():
-    hand = list(hand_key); total = hand_total(hand); soft = is_soft(hand)
+  total_ev = 0.0; sum_second_moment = 0.0; breakdown = {}
+  for (hand_tuple, upcard_index), prob in all_entries.items():
+    hand = list(hand_tuple); total = hand_total(hand); is_soft_hand = is_soft(hand)
     is_pair = len(hand) == 2 and hand[0] == hand[1]
-    if is_pair: code = pair_matrix.get((ui, hand[0]))
-    elif soft: code = soft_matrix.get((ui, total))
-    else: code = hard_matrix.get((ui, total))
+    if is_pair: code = pair_matrix.get((upcard_index, hand[0]))
+    elif is_soft_hand: code = soft_matrix.get((upcard_index, total))
+    else: code = hard_matrix.get((upcard_index, total))
     if code is None: continue
 
-    ev = ev_for_code(code, hand, ui, stand_lkp, hit_lkp, double_lkp, split_das_lkp, split_ndas_lkp, das, enhc=enhc, decks=decks)
+    ev = ev_for_code(code, hand, upcard_index, stand_lookup, hit_lookup, double_lookup,
+                     split_das_lookup, split_ndas_lookup, das, enhc=enhc, decks=decks)
     if ev is None: continue
-    e2 = e2_for_code(code, hand, ui, stand_lkp, hit_lkp, double_lkp, split_das_lkp, split_ndas_lkp, das, enhc, decks)
-    if e2 is None: e2 = ev ** 2
+    second_moment = second_moment_for_code(code, hand, upcard_index, stand_lookup, hit_lookup, double_lookup,
+                                           split_das_lookup, split_ndas_lookup, das, enhc, decks)
+    if second_moment is None: second_moment = ev ** 2
 
     total_ev += prob * ev
-    sum_e2 += prob * e2
+    sum_second_moment += prob * second_moment
     breakdown[code] = breakdown.get(code, 0.0) + prob * ev
 
-  return total_ev, breakdown, sum_e2
+  return total_ev, breakdown, sum_second_moment
 
 
 
 def main():
-  parser = argparse.ArgumentParser(description="Basic strategy charts + game EV for a blackjack ruleset.")
-  parser.add_argument("--decks", type=int, default=6, choices=[1,2,4,6,8])
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--decks", type=int, default=6, choices=[1, 2, 4, 6, 8])
   parser.add_argument("--s17", dest="s17", action="store_true", default=True)
   parser.add_argument("--h17", dest="s17", action="store_false")
   parser.add_argument("--enhc", dest="enhc", action="store_true", default=False)
   parser.add_argument("--us", dest="enhc", action="store_false")
   parser.add_argument("--das", dest="das", action="store_true", default=True)
   parser.add_argument("--ndas", dest="das", action="store_false")
-  parser.add_argument("--surrender", dest="surrender",action="store_true", default=True)
-  parser.add_argument("--no-surrender", dest="surrender",action="store_false")
-  parser.add_argument("--ra", type=float, default=0.0,
-                      help="Risk aversion coefficient λ (CE = EV - (λ/2)·Var). Default 0 = risk neutral.")
-  parser.add_argument("--bet", type=float, default=25.0,
-                      help="Flat bet size in dollars. Default $25.")
+  parser.add_argument("--surrender", dest="surrender", action="store_true", default=True)
+  parser.add_argument("--no-surrender", dest="surrender", action="store_false")
+  parser.add_argument("--ra", type=float, default=0.0)
+  parser.add_argument("--bet", type=float, default=25.0)
   args = parser.parse_args()
 
-  stand_ds = get_dataset(load_json("stand.json"), "probs", args.decks, args.s17, args.enhc)
-  hit_ds = get_dataset(load_json("hit.json"), "probs", args.decks, args.s17, args.enhc)
-  double_ds = get_dataset(load_json("double.json"), "probs", args.decks, args.s17, args.enhc)
-  split_full = get_dataset(load_json("split.json"), "probs", args.decks, args.s17, args.enhc)
-  split_das_ds = split_full["DAS"]
-  split_ndas_ds = split_full["nDAS"]
+  stand_dataset = get_dataset(load_json("stand.json"), "probs", args.decks, args.s17, args.enhc)
+  hit_dataset = get_dataset(load_json("hit.json"), "probs", args.decks, args.s17, args.enhc)
+  double_dataset = get_dataset(load_json("double.json"), "probs", args.decks, args.s17, args.enhc)
+  split_data = get_dataset(load_json("split.json"), "probs", args.decks, args.s17, args.enhc)
+  split_das_dataset = split_data["DAS"]
+  split_ndas_dataset = split_data["nDAS"]
 
   surrender_str = "Late Surrender" if args.surrender else "No Surrender"
-  ra_str = f", λ={args.ra}" if args.ra != 0.0 else ""
+  risk_aversion_str = f", λ={args.ra}" if args.ra != 0.0 else ""
   rule_str = (f"{args.decks} deck{'s' if args.decks > 1 else ''}, "
               f"{'S17' if args.s17 else 'H17'}, "
               f"{'ENHC' if args.enhc else 'US peek'}, "
               f"{'DAS' if args.das else 'nDAS'}, "
-              f"{surrender_str}{ra_str}")
+              f"{surrender_str}{risk_aversion_str}")
 
   print(f"\n{BOLD}{WHITE}Basic Strategy — {rule_str}{RESET}")
 
-  hard_ev_var = build_ev_var_table(stand_ds, hit_ds, double_ds, False)
-  soft_ev_var = build_ev_var_table(stand_ds, hit_ds, double_ds, True)
+  hard_ev_variance = build_ev_variance_table(stand_dataset, hit_dataset, double_dataset, False)
+  soft_ev_variance = build_ev_variance_table(stand_dataset, hit_dataset, double_dataset, True)
 
   print_table("Hard Hands", [str(t) for t in range(21, 3, -1)],
-    [[best_non_split_character(hard_ev_var.get((ui, total), {}), args.surrender, ra=args.ra)
-      for ui in UPCARD_ORDER] for total in range(21, 3, -1)])
+    [[best_non_split_action(hard_ev_variance.get((upcard_index, total), {}), args.surrender, risk_aversion=args.ra)
+      for upcard_index in UPCARD_ORDER] for total in range(21, 3, -1)])
 
   print_table("Soft Hands", [f"A,{t-11}" if t <= 21 else "A,10" for t in range(21, 12, -1)],
-    [[best_non_split_character(soft_ev_var.get((ui, total), {}), args.surrender, ra=args.ra)
-      for ui in UPCARD_ORDER] for total in range(21, 12, -1)])
+    [[best_non_split_action(soft_ev_variance.get((upcard_index, total), {}), args.surrender, risk_aversion=args.ra)
+      for upcard_index in UPCARD_ORDER] for total in range(21, 12, -1)])
 
   pair_order = [1, 10, 9, 8, 7, 6, 5, 4, 3, 2]
   pair_labels = ["A,A","10,10","9,9","8,8","7,7","6,6","5,5","4,4","3,3","2,2"]
   print_table("Pairs (Split)", pair_labels,
-    [[split_decision_chart(split_das_ds, split_ndas_ds, stand_ds, hit_ds, double_ds,
-                           pv, ui, args.surrender, ra=args.ra)
-      for ui in UPCARD_ORDER] for pv in pair_order])
+    [[split_decision_chart(split_das_dataset, split_ndas_dataset, stand_dataset, hit_dataset, double_dataset,
+                           pair_val, upcard_index, args.surrender, risk_aversion=args.ra)
+      for upcard_index in UPCARD_ORDER] for pair_val in pair_order])
 
   print_legend()
 
-  decision_ev, breakdown, sum_e2 = compute_game_ev(
-    stand_ds, hit_ds, double_ds, split_das_ds, split_ndas_ds,
-    das=args.das, surrender=args.surrender, decks=args.decks, enhc=args.enhc, ra=args.ra)
+  decision_ev, breakdown, sum_second_moment = compute_game_ev(
+    stand_dataset, hit_dataset, double_dataset, split_das_dataset, split_ndas_dataset,
+    das=args.das, surrender=args.surrender, decks=args.decks, enhc=args.enhc, risk_aversion=args.ra)
 
   new_counts = 52 * args.decks
-  p_dealer_bj = (4*args.decks/new_counts)*(16*args.decks/(new_counts-1)) + (16*args.decks/new_counts)*(4*args.decks/(new_counts-1)) if not args.enhc else 0.0
-  p_player_bj = (4*args.decks/new_counts)*(16*args.decks/(new_counts-1)) + (16*args.decks/new_counts)*(4*args.decks/(new_counts-1))
-  p_dealer_bj_given_player_bj = (((4*args.decks-1)/(new_counts-2))*((16*args.decks-1)/(new_counts-3)) +
-                                  ((16*args.decks-1)/(new_counts-2))*((4*args.decks-1)/(new_counts-3)))
-  p_both_bj = p_player_bj * p_dealer_bj_given_player_bj
-  p_dealer_bj_no_player = p_dealer_bj - p_both_bj
-  dealer_bj_only_ev = p_dealer_bj_no_player * -1.0 if not args.enhc else 0.0
+  prob_dealer_bj = ((4*args.decks/new_counts)*(16*args.decks/(new_counts-1)) +
+    (16*args.decks/new_counts)*(4*args.decks/(new_counts-1))) if not args.enhc else 0.0
+  prob_player_bj = ((4*args.decks/new_counts)*(16*args.decks/(new_counts-1)) +
+    (16*args.decks/new_counts)*(4*args.decks/(new_counts-1)))
+  prob_dealer_bj_given_player_bj = (
+    ((4*args.decks-1)/(new_counts-2))*((16*args.decks-1)/(new_counts-3)) +
+    ((16*args.decks-1)/(new_counts-2))*((4*args.decks-1)/(new_counts-3)))
+  prob_dealer_bj_no_player = prob_dealer_bj - prob_player_bj * prob_dealer_bj_given_player_bj
+  dealer_bj_only_ev = prob_dealer_bj_no_player * -1.0 if not args.enhc else 0.0
   total_ev = decision_ev + dealer_bj_only_ev
 
   bet = args.bet; hands_hour = 100
   ev_hour = total_ev * bet * hands_hour
-  e2_total = sum_e2 + (p_dealer_bj_no_player if not args.enhc else 0.0)
-  variance = e2_total - total_ev ** 2
+  second_moment_total = sum_second_moment + (prob_dealer_bj_no_player if not args.enhc else 0.0)
+  variance = second_moment_total - total_ev ** 2
   sd_hour = (variance ** 0.5) * bet * (hands_hour ** 0.5)
 
   print(f"\n{BOLD}{WHITE}Game EV — {rule_str}{RESET}")
   print(f" Player EV : {total_ev*100:+.4f}%")
-  print(f" EV/hour : ${ev_hour:+.2f} (${bet:.0f} flat, {hands_hour} hands/hr)")
-  print(f" SD/hour : ${sd_hour:.2f}")
-  print(f" 1 SD (68.3%): ${ev_hour - sd_hour:.2f} to ${ev_hour + sd_hour:.2f}")
-  print(f" 2 SD (95.5%): ${ev_hour - 2*sd_hour:.2f} to ${ev_hour + 2*sd_hour:.2f}")
+  print(f" EV/hour   : ${ev_hour:+.2f} (${bet:.0f} flat, {hands_hour} hands/hr)")
+  print(f" SD/hour   : ${sd_hour:.2f}")
+  print(f" 1 SD range: ${ev_hour - sd_hour:.2f} to ${ev_hour + sd_hour:.2f}")
+  print(f" 2 SD range: ${ev_hour - 2*sd_hour:.2f} to ${ev_hour + 2*sd_hour:.2f}")
   print()
 
 
 
 if __name__ == "__main__":
   main()
-

@@ -13,8 +13,6 @@ sys.path.insert(0, os.path.join(_here, ".."))
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
-import numpy as np
 from blackjack_sim import (
   strategy_folder, load_strategy_csv,
   rule_prefix, Simulator as blackjack_simulator,
@@ -134,60 +132,22 @@ def main() -> None:
 
   print("Generating plot...")
 
-  fig, ax = plt.subplots(figsize=(12, 7))
-  fig.patch.set_facecolor("#0f1117")
-  ax.set_facecolor("#1a1d27")
-
-  x = np.array(ITERATION_COUNTS)
-
-  ax.plot(x, error_counts,
-      color="#4FC3F7", linewidth=2.5,
-      marker="o", markersize=8,
-      markerfacecolor="#4FC3F7", markeredgecolor="#0f1117", markeredgewidth=1.5,
-      label="Monte Carlo Simulator", zorder=3)
-
-  ax.fill_between(x, error_counts, alpha=0.12, color="#4FC3F7")
-
-  for xi, yi in zip(x, error_counts):
-    ax.annotate(str(yi),
-          xy=(xi, yi),
-          xytext=(0, 12), textcoords="offset points",
-          ha="center", fontsize=11, color="#4FC3F7")
-
-  ax.set_xscale("log")
-  ax.set_xlabel("Iterations per cell", fontsize=13, color="#cccccc", labelpad=10)
-  ax.set_ylabel("Incorrect Decisions", fontsize=13, color="#cccccc", labelpad=10)
-
   rule_str = (f"{args.decks}D {'S17' if args.s17 else 'H17'} "
         f"{'ENHC' if args.enhc else 'US'} {'DAS' if args.das else 'nDAS'}")
-  ax.set_title(f"Monte Carlo Simulator Convergence\n{rule_str}",
-         fontsize=15, color="#ffffff", pad=18, fontweight="bold")
 
   def fmt(n): return f"{n/1_000_000:.3g}M" if n >= 1_000_000 else (f"{n//1000}K" if n >= 1000 else str(n))
-  tick_labels = [fmt(n) for n in ITERATION_COUNTS]
-  completed = ITERATION_COUNTS[:len(error_counts)]
-  completed_labels = tick_labels[:len(error_counts)]
-  ax.set_xticks(completed)
-  ax.set_xticklabels(completed_labels, fontsize=11)
-  ax.tick_params(colors="#888888", labelsize=11)
-  for spine in ax.spines.values():
-    spine.set_edgecolor("#333344")
 
-  ax.grid(True, which="both", color="#252535", linewidth=0.8, alpha=0.8)
-  ax.set_ylim(bottom=-0.5)
-  ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-
-  ax.legend(fontsize=12, framealpha=0.25, facecolor="#1a1d27",
-        edgecolor="#444455", labelcolor="#dddddd", loc="upper right")
-
-  fig.text(0.99, 0.01,
-       f"Total time: {total_elapsed:.1f}s ({total_elapsed/60:.1f} min)",
-       ha="right", va="bottom", fontsize=10,
-       color="#666677", fontstyle="italic")
-
+  figure, axes = plt.subplots()
+  axes.plot(ITERATION_COUNTS, error_counts, marker="o", label="Monte Carlo Simulator")
+  axes.set_xscale("log")
+  axes.set_xticks(ITERATION_COUNTS)
+  axes.set_xticklabels([fmt(n) for n in ITERATION_COUNTS])
+  axes.set_xlabel("Iterations per cell")
+  axes.set_ylabel("Incorrect Decisions")
+  axes.set_title(f"Monte Carlo Simulator Convergence  |  {rule_str}")
+  axes.legend()
   plt.tight_layout()
-  plt.savefig(output, dpi=150, bbox_inches="tight",
-        facecolor=fig.get_facecolor())
+  plt.savefig(output, dpi=150)
   plt.close()
 
   print(f"\nPlot saved -> {output}")
