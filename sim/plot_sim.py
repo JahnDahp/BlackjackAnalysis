@@ -85,35 +85,40 @@ def main() -> None:
   import time
   total_start = time.time()
 
+  import tempfile
+  import pandas as _pd
+
   for iters in ITERATION_COUNTS:
     iter_start = time.time()
     print(f"── {iters:>10,} iterations ──────────────────────────", flush=True)
 
-    import pandas as _pd
     up_labels = ["2","3","4","5","6","7","8","9","10","A"]
-    pair_labels = ["10","9","8","7","6","5","4","3","2","A"]
     das_label = "DAS" if args.das else "NDAS"
-    for name, index in [
-      ("Hard", list(range(21, 3, -1))),
-      ("Soft", list(range(21, 12, -1))),
-      (f"Pairs_{das_label}", ["10","9","8","7","6","5","4","3","2","A"]),
-    ]:
-      df = _pd.DataFrame(
-        [[iters] * 10 for _ in index],
-        index=[str(i) for i in index],
-        columns=up_labels,
-      )
-      df.index.name = "Hand"
-      df.to_csv(folder / f"{name}_Iterations.csv")
 
-    results_dfs = sim.calc(
-      folder,
-      out_folder=folder,
-      prefix_base=prefix_base,
-      prefix_das=prefix_das,
-      workers=args.workers,
-      modes=["hard", "soft", "pairs"],
-    )
+    with tempfile.TemporaryDirectory() as tmp_dir:
+      from pathlib import Path as _Path
+      tmp = _Path(tmp_dir)
+      for name, index in [
+        ("Hard", list(range(21, 3, -1))),
+        ("Soft", list(range(21, 12, -1))),
+        (f"Pairs_{das_label}", ["10","9","8","7","6","5","4","3","2","A"]),
+      ]:
+        df = _pd.DataFrame(
+          [[iters] * 10 for _ in index],
+          index=[str(i) for i in index],
+          columns=up_labels,
+        )
+        df.index.name = "Hand"
+        df.to_csv(tmp / f"{name}_Iterations.csv")
+
+      results_dfs = sim.calc(
+        folder,
+        out_folder=tmp,
+        prefix_base=prefix_base,
+        prefix_das=prefix_das,
+        workers=args.workers,
+        modes=["hard", "soft", "pairs"],
+      )
 
     errors = count_errors(results_dfs, folder, args.das)
     elapsed = time.time() - iter_start

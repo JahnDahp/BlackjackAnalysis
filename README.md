@@ -24,7 +24,7 @@ BlackjackAnalysis/
 ├── sim/
 │   ├── blackjack_sim.py                # Monte Carlo strategy simulator
 │   └── plot_sim.py                     # Plot simulator convergence
-└── reinforcement_learning/
+└── rl/
     ├── blackjack_rl.py                 # Train Q-table via reinforcement learning
     └── plot_rl.py                      # Plot RL convergence
 ```
@@ -116,7 +116,7 @@ The RL equivalent of an iteration is an episode — a single sampled hand agains
 **Train and output a strategy:**
 
 ```
-python reinforcement_learning/blackjack_rl.py [--decks N] [--s17|--h17] [--enhc] [--das|--ndas] [--episodes N]
+python rl/blackjack_rl.py [--decks N] [--s17|--h17] [--enhc] [--das|--ndas] [--episodes N]
 ```
 
 Trains a Q-table using an incremental learning rate (1/n visits by cell) and epsilon-greedy exploration with linear decay. Outputs strategy CSVs and prints an accuracy report against verified optimal strategy.
@@ -124,7 +124,7 @@ Trains a Q-table using an incremental learning rate (1/n visits by cell) and eps
 **Plot convergence:**
 
 ```
-python reinforcement_learning/plot_rl.py [--decks N] [--s17|--h17] [--enhc] [--das|--ndas]
+python rl/plot_rl.py [--decks N] [--s17|--h17] [--enhc] [--das|--ndas]
 ```
 
 Runs training at increasing episode counts and generates a convergence plot showing how strategy accuracy improves over training episodes.
