@@ -1,4 +1,4 @@
-# Run with: python calc_ev.py [--decks N] [--s17|--h17] [--enhc|--us] [--das|--ndas]
+# Run with: python calc_ev.py [--decks N] [--s17|--h17] [--enhc|--us]
 
 import sys
 import os
@@ -53,11 +53,9 @@ def main():
   parser.add_argument("--h17", dest="s17", action="store_false")
   parser.add_argument("--enhc", dest="enhc", action="store_true", default=False)
   parser.add_argument("--us", dest="enhc", action="store_false")
-  parser.add_argument("--das", dest="das", action="store_true", default=True)
-  parser.add_argument("--ndas", dest="das", action="store_false")
   args = parser.parse_args()
 
-  settings = DealerSettingsObject(decks=args.decks, S17=args.s17, ENHC=args.enhc, DAS=args.das)
+  settings = DealerSettingsObject(decks=args.decks, S17=args.s17, ENHC=args.enhc)
   instance = Calculator.create(settings)
 
   for decision, label_prefix, multiplier, total_range in [
