@@ -53,7 +53,7 @@ def main():
   prob_dealer_bj_no_player = prob_dealer_bj - prob_player_bj * prob_dealer_bj_given_player_bj
 
   rule_str = (f"{args.decks}D {'S17' if args.s17 else 'H17'} "
-              f"{'ENHC' if args.enhc else 'US'} {'DAS' if args.das else 'nDAS'}")
+              f"{'ENHC' if args.enhc else 'US'} {'DAS' if args.das else 'nDAS'} {'LS' if args.surrender else 'nLS'}")
   print(f"Settings: {rule_str}, ${args.bet:.0f} flat bet")
   print(f"Computing EV/hour for {len(RA_VALUES)} risk-aversion values...\n")
 
@@ -73,7 +73,7 @@ def main():
     ev_hour = total_ev * args.bet * HANDS_HOUR
     sd_hours.append(sd_hour)
     ev_hours.append(ev_hour)
-    print(f" λ={risk_aversion:<5} EV/hour = ${ev_hour:+.2f}  SD/hour = ${sd_hour:.2f}  range = [${ev_hour-sd_hour:+.2f}, ${ev_hour+sd_hour:+.2f}]")
+    print(f" RA={risk_aversion:<5} EV/hour = ${ev_hour:+.2f}  SD/hour = ${sd_hour:.2f}  range = [${ev_hour-sd_hour:+.2f}, ${ev_hour+sd_hour:+.2f}]")
 
   ra_array = np.array(RA_VALUES, dtype=float)
   ev_array = np.array(ev_hours)
@@ -86,9 +86,9 @@ def main():
   axes.plot(ra_array, ev_array, label="EV/hour")
   axes.plot(ra_array, ev_array - sd_array, label="EV - 1 SD")
   axes.axhline(0, color="black", linewidth=0.8, linestyle=":")
-  axes.set_xlabel("λ")
+  axes.set_xlabel("RA")
   axes.set_ylabel("$/hour")
-  axes.set_title(f"EV ± 1 SD vs. Risk Aversion  |  {rule_str}, ${args.bet:.0f} flat, {HANDS_HOUR} hands/hr")
+  axes.set_title(f"{rule_str}, ${args.bet:.0f} flat, {HANDS_HOUR} hands/hr")
   axes.legend()
   plt.tight_layout()
   plt.savefig(output, dpi=150)

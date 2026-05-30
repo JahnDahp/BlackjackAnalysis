@@ -375,7 +375,7 @@ def get_iterations_for_cell(iter_df: pd.DataFrame, total, up_card: int) -> int:
 def resolve_ev_to_code(stand_ev: float, hit_ev: float, double_ev: float) -> str:
   double_ev_normalized = double_ev / 2.0
   if double_ev_normalized >= stand_ev and double_ev_normalized >= hit_ev:
-    return "DH" if hit_ev > stand_ev else "DS"
+    return "Dh" if hit_ev > stand_ev else "Ds"
   if hit_ev >= stand_ev:
     return "H"
   return "S"
@@ -678,6 +678,7 @@ def upcard_worker(task: dict) -> dict:
   upcard = task["up_card"]
   modes = task["modes"]
   das = task["das"]
+  surrender = True
   hard_hands = task["hard_hands"]
   soft_hands = task["soft_hands"]
   iter_hard = task["iter_hard"]
@@ -688,20 +689,26 @@ def upcard_worker(task: dict) -> dict:
   hard_built = [-1] * 18
   soft_built = [-1] * 10
 
-  code_map = {0: "S", 1: "H", 2: "DH"}
+  code_map = {0: "S", 1: "H", 2: "Dh"}
 
   def series(built, offset):
     import pandas as pd
     d = {i + offset: code_map[v] for i, v in enumerate(built) if v != -1}
     return pd.Series(d) if d else None
 
+  def absorb_code(code):
+    upper = code.upper().lstrip("R")
+    if upper in ("S", "DS"): return 0
+    if upper in ("H", "P"): return 1
+    return 2
+
   def absorb_hard(result):
     for total, code in result["totals"].items():
-      hard_built[total - 4] = 0 if "S" in code else (1 if code == "H" else 2)
+      hard_built[total - 4] = absorb_code(code)
 
   def absorb_soft(result):
     for total, code in result["totals"].items():
-      soft_built[total - 12] = 0 if "S" in code else (1 if code == "H" else 2)
+      soft_built[total - 12] = absorb_code(code)
 
   def make_task(mode, hands=None, iter_df=None, totals_override=None):
     t = {
@@ -747,10 +754,12 @@ def worker(task: dict) -> dict:
   hard_series = task.get("hard_series")
   soft_series = task.get("soft_series")
   mode: str = task["mode"]
+  surrender = True
 
   STAND = 0
   HIT = 1
   DOUBLE = 2
+  SURRENDER_EV = -0.5
 
   iter_df = task.get("iter_df")
 
@@ -818,13 +827,18 @@ def worker(task: dict) -> dict:
       split_ev = split_hand_ev(pair_val, cell_iters)
       double_ev_norm = double_ev / 2.0
       best_no_split_ev = max(stand_ev, hit_ev, double_ev_norm)
-      code = "P" if split_ev > best_no_split_ev else resolve_ev_to_code(stand_ev, hit_ev, double_ev)
+      base_code = "P" if split_ev > best_no_split_ev else resolve_ev_to_code(stand_ev, hit_ev, double_ev)
+      best_ev = max(split_ev, best_no_split_ev)
+      if surrender and SURRENDER_EV > best_ev:
+        code = "Rp" if base_code == "P" else ("Rh" if "H" in base_code else "Rs")
+      else:
+        code = base_code
 
       pair_label = "A" if pair_val == 1 else str(pair_val)
       print(f"[pairs|upCard={up_label}] {pair_label},{pair_label}: {code} "
-          f"(S={stand_ev:.4f} H={hit_ev:.4f} D={double_ev_norm:.4f} P={split_ev:.4f})", flush=True)
+          f"(S={stand_ev:.4f} H={hit_ev:.4f} D={double_ev_norm:.4f} P={split_ev:.4f} R={SURRENDER_EV:.4f})", flush=True)
       pair_results[pair_val] = code
-      pair_evs[pair_val] = {"S": stand_ev, "H": hit_ev, "D": double_ev_norm, "P": split_ev}
+      pair_evs[pair_val] = {"S": stand_ev, "H": hit_ev, "D": double_ev_norm, "P": split_ev, "R": SURRENDER_EV}
     print(f"[pairs|upCard={up_label}] Done", flush=True)
     return {"mode": mode, "up_card": up_card, "pair_results": pair_results, "pair_evs": pair_evs}
 
@@ -848,19 +862,22 @@ def worker(task: dict) -> dict:
       hit_ev += run_n(comp["hand"], HIT, comp_iters) * p
       double_ev += run_n(comp["hand"], DOUBLE, comp_iters) * p
 
-    code = resolve_ev_to_code(stand_ev, hit_ev, double_ev)
+    base_code = resolve_ev_to_code(stand_ev, hit_ev, double_ev)
+    best_ev = max(stand_ev, hit_ev, double_ev / 2.0)
+    code = ("Rh" if "H" in base_code else "Rs") if (surrender and SURRENDER_EV > best_ev) else base_code
 
+    fallback_code = base_code
     if isinstance(hard_choices, list) and not is_soft:
-      int_choice = STAND if "S" in code else (HIT if "H" in code else DOUBLE)
+      int_choice = STAND if "S" in fallback_code else (HIT if "H" in fallback_code else DOUBLE)
       hard_choices[hand_total - 4] = int_choice
     if isinstance(soft_choices, list) and is_soft:
-      int_choice = STAND if "S" in code else (HIT if "H" in code else DOUBLE)
+      int_choice = STAND if "S" in fallback_code else (HIT if "H" in fallback_code else DOUBLE)
       soft_choices[hand_total - 12] = int_choice
 
     totals_out[hand_total] = code
-    evs_out[hand_total] = {"S": stand_ev, "H": hit_ev, "D": double_ev / 2.0}
+    evs_out[hand_total] = {"S": stand_ev, "H": hit_ev, "D": double_ev / 2.0, "R": SURRENDER_EV}
     print(f"[{mode}|upCard={up_label}] {hand_total}: {code} "
-        f"(S={stand_ev:.4f} H={hit_ev:.4f} D={double_ev / 2.0:.4f})", flush=True)
+        f"(S={stand_ev:.4f} H={hit_ev:.4f} D={double_ev / 2.0:.4f} R={SURRENDER_EV:.4f})", flush=True)
 
   print(f"[{mode}|upCard={up_label}] Done", flush=True)
   return {"mode": mode, "up_card": up_card, "totals": totals_out, "evs": evs_out}
@@ -946,8 +963,8 @@ if __name__ == "__main__":
       for col in sim_df.columns:
         if col not in verified_df.columns:
           continue
-        sim_val = str(sim_df.loc[hand, col]).strip().upper()
-        verified_val = str(verified_df.loc[v_hand, col]).strip().upper()
+        sim_val = str(sim_df.loc[hand, col]).strip()
+        verified_val = str(verified_df.loc[v_hand, col]).strip()
         if sim_val != verified_val:
           ev_note = ""
           ev_lookup = sim_df.attrs.get("ev_lookup", {})

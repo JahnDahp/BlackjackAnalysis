@@ -93,6 +93,8 @@ python sim/blackjack_sim.py [--decks N] [--s17|--h17] [--enhc] [--das|--ndas] [-
 - Without `--iterations N`: computes the required iterations per cell to distinguish the best action from the second-best at the given confidence level, then runs the simulation using those counts. Only useful because EV and variance is known due to the calculator method.
 - With `--iterations N`: skips the confidence calculation and uses a fixed iteration count for every cell.
 
+Surrender is always evaluated — if -0.5 beats the best simulated EV the cell is marked `Rh`, `Rs`, or `Rp`. Players without surrender available simply use the fallback action (the letter after R).
+
 Outputs strategy CSVs and prints an accuracy report comparing simulated decisions against verified optimal strategy. Can be run in parallel using `--workers N`.
 
 **Plot convergence:**
@@ -109,7 +111,7 @@ Runs the simulator at increasing iteration counts (100 → 1K → 10K → 100K) 
 
 The RL module trains a Q-table by playing out millions of random hands and updating action values based on outcomes.
 
-The RL equivalent of an iteration is an episode, or a single sampled hand against a single upcard, training one action at one cell. There are 1,210 state-action pairs in total: 180 hard cells x 3 actions + 90 soft cells x 3 actions + 100 pair cells x 4 actions (hit, stand, double, split) = 540 + 270 + 400 = 1,210. One episode covers one of these pairs, so the equivalent per-cell iteration count is episodes / 1,210. The convergence plot runs at 1,240x the simulator's iteration milestones so the x-axes are directly comparable.
+The RL equivalent of an iteration is an episode — a single sampled hand against a single upcard, training one action at one cell. There are 1,580 state-action pairs: 180 hard cells × 4 actions + 90 soft cells × 4 actions + 100 pair cells × 5 actions (hit, stand, double, split, surrender) = 720 + 360 + 500 = 1,580. Surrender is always included — the Q-value for surrender converges to its fixed reward of -0.5, so surrender cells naturally output `Rh`/`Rs`/`Rp`. Players without surrender use the fallback action. The convergence plot uses 1,210× the simulator's iteration milestones (the no-surrender baseline) so the x-axes remain directly comparable.
 
 **Train and output a strategy:**
 

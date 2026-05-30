@@ -118,7 +118,7 @@ def certainty_equiv(ev, second_moment, risk_aversion):
 
 
 
-def best_non_split_action(ev_variance, surrender=False, surr_ev=-0.5, surr_second_moment=0.25, risk_aversion=0.0):
+def best_non_split_action(ev_variance, surrender=True, surr_ev=-0.5, surr_second_moment=0.25, risk_aversion=0.0):
   if not ev_variance: return "S"
   best_action = None
   best_certainty_equiv = float('-inf')
@@ -127,7 +127,7 @@ def best_non_split_action(ev_variance, surrender=False, surr_ev=-0.5, surr_secon
     if ce_value > best_certainty_equiv: best_certainty_equiv = ce_value; best_action = action
   surrender_ce = certainty_equiv(surr_ev, surr_second_moment, risk_aversion)
   if surrender and surrender_ce > best_certainty_equiv:
-    return "R" + best_action
+    return "Rh" if best_action in ("H", "Dh") else "Rs"
   return best_action
 
 
@@ -186,7 +186,7 @@ def build_ev_variance_table(stand_dataset, hit_dataset, double_dataset, is_soft_
 
 
 def split_decision_chart(split_dataset_das, split_dataset_ndas, stand_dataset, hit_dataset,
-                          double_dataset, pair_val, upcard_index, surrender=False, risk_aversion=0.0):
+                          double_dataset, pair_val, upcard_index, surrender=True, risk_aversion=0.0):
   def get_split_ev_and_second_moment(dataset, das=False):
     for row in dataset[upcard_index]:
       if row[0][0] == pair_val:
@@ -216,9 +216,8 @@ def split_decision_chart(split_dataset_das, split_dataset_ndas, stand_dataset, h
       non_split_ev_variance[double_key] = (double_ev(row[2]), double_second_moment(row[2]))
       break
 
-  best_non_split_code = best_non_split_action(non_split_ev_variance, risk_aversion=risk_aversion)
-  best_non_split_ev_value = non_split_ev_variance[best_non_split_code][0] if best_non_split_code in non_split_ev_variance else 0.0
-  best_non_split_second_moment = non_split_ev_variance[best_non_split_code][1] if best_non_split_code in non_split_ev_variance else 1.0
+  best_non_split_code = best_non_split_action(non_split_ev_variance, surrender=False, risk_aversion=risk_aversion)
+  best_non_split_ev_value, best_non_split_second_moment = non_split_ev_variance.get(best_non_split_code, (0.0, 1.0))
   best_non_split_ce = certainty_equiv(best_non_split_ev_value, best_non_split_second_moment, risk_aversion)
 
   das_ce = certainty_equiv(das_split_ev, das_split_second_moment, risk_aversion) if das_split_ev is not None else None
@@ -230,12 +229,12 @@ def split_decision_chart(split_dataset_das, split_dataset_ndas, stand_dataset, h
   surrender_ce = certainty_equiv(-0.5, 0.25, risk_aversion)
 
   if das_better and ndas_better:
-    return "RP" if (surrender and surrender_ce > das_ce) else "P"
+    return "Rp" if (surrender and surrender_ce > das_ce) else "P"
   elif das_better:
-    return "RP?" if (surrender and surrender_ce > das_ce) else "P?"
+    return "Rp?" if (surrender and surrender_ce > das_ce) else "P?"
   else:
     if surrender and surrender_ce > best_non_split_ce:
-      return "R" + best_non_split_code
+      return "Rh" if best_non_split_code in ("H", "Dh") else "Rs"
     return best_non_split_code
 
 
@@ -269,8 +268,9 @@ def print_legend():
     ("Ds", "Double, else Stand"),
     ("P", "Split"),
     ("P?", "Split if DAS only"),
-    ("RH", "Surrender, else Hit"),
-    ("RS", "Surrender, else Stand"),
+    ("Rh", "Surrender, else Hit"),
+    ("Rs", "Surrender, else Stand"),
+    ("Rp", "Surrender, else Split"),
   ]
   print(f"\n{BOLD}Legend{RESET}")
   for code, desc in items:
@@ -279,7 +279,7 @@ def print_legend():
 
 
 def build_strategy_matrix(stand_dataset, hit_dataset, double_dataset, split_das_dataset, split_ndas_dataset,
-                           das=True, surrender=False, enhc=False, decks=6, risk_aversion=0.0):
+                           das=True, surrender=True, enhc=False, decks=6, risk_aversion=0.0):
   hard_ev_variance = build_ev_variance_table(stand_dataset, hit_dataset, double_dataset, False)
   soft_ev_variance = build_ev_variance_table(stand_dataset, hit_dataset, double_dataset, True)
 
@@ -377,7 +377,7 @@ def second_moment_for_code(code, hand, upcard_index, stand_lookup, hit_lookup, d
 
 
 def compute_game_ev(stand_dataset, hit_dataset, double_dataset, split_das_dataset, split_ndas_dataset,
-                    das=True, surrender=False, decks=6, enhc=False, risk_aversion=0.0):
+                    das=True, surrender=True, decks=6, enhc=False, risk_aversion=0.0):
   hard_matrix, soft_matrix, pair_matrix = build_strategy_matrix(
     stand_dataset, hit_dataset, double_dataset, split_das_dataset, split_ndas_dataset,
     das, surrender, enhc=enhc, decks=decks, risk_aversion=risk_aversion)
@@ -463,7 +463,7 @@ def main():
   split_das_dataset = split_data["DAS"]
   split_ndas_dataset = split_data["nDAS"]
 
-  surrender_str = "Late Surrender" if args.surrender else "No Surrender"
+  surrender_str = "LS" if args.surrender else "nLS"
   risk_aversion_str = f", λ={args.ra}" if args.ra != 0.0 else ""
   rule_str = (f"{args.decks} deck{'s' if args.decks > 1 else ''}, "
               f"{'S17' if args.s17 else 'H17'}, "

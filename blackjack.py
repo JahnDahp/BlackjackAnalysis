@@ -22,6 +22,7 @@ _STAND = 0
 _HIT = 1
 _DOUBLE = 2
 _SPLIT = 3
+_SURRENDER = 4
 _NONE = -1
 
 
@@ -210,6 +211,7 @@ class BlackjackSimulator:
   HIT = _HIT
   DOUBLE = _DOUBLE
   SPLIT = _SPLIT
+  SURRENDER = _SURRENDER
 
   def __init__(self, rules: DealerSettingsObject) -> None:
     self.rules = rules

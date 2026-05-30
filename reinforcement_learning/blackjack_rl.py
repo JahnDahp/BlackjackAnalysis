@@ -1,4 +1,4 @@
-# Run with: python blackjack_rl.py [--decks N] [--s17|--h17] [--enhc] [--das|--ndas] [--episodes N]
+# Run with: python blackjack_rl.py [--decks N] [--s17|--h17] [--enhc] [--das|--ndas] [--surrender|--no-surrender] [--episodes N]
 
 from __future__ import annotations
 import math
@@ -10,7 +10,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from blackjack import (
   BlackjackSimulator, DealerSettingsObject,
-  _STAND, _HIT, _DOUBLE, _SPLIT, _NONE,
+  _STAND, _HIT, _DOUBLE, _SPLIT, _SURRENDER, _NONE,
 )
 
 
@@ -19,15 +19,19 @@ STAND = _STAND
 HIT = _HIT
 DOUBLE = _DOUBLE
 SPLIT = _SPLIT
+SURRENDER = _SURRENDER
 
-ACTION_NAMES = {STAND: "S", HIT: "H", DOUBLE: "DH", SPLIT: "P"}
+ACTION_NAMES = {STAND: "S", HIT: "H", DOUBLE: "Dh", SPLIT: "P", SURRENDER: "Rs"}
 HARD_ACTIONS = [STAND, HIT, DOUBLE]
+HARD_ACTIONS_SURRENDER = [STAND, HIT, DOUBLE, SURRENDER]
 PAIR_DAS_ACTIONS = [STAND, HIT, DOUBLE, SPLIT]
-PAIR_NDAS_ACTIONS= [STAND, HIT, SPLIT]
+PAIR_DAS_ACTIONS_SURRENDER = [STAND, HIT, DOUBLE, SPLIT, SURRENDER]
+PAIR_NDAS_ACTIONS = [STAND, HIT, SPLIT]
+PAIR_NDAS_ACTIONS_SURRENDER = [STAND, HIT, SPLIT, SURRENDER]
 
 
 
-_N_ACTIONS = 4
+_N_ACTIONS = 5
 
 def empty_table(n_rows: int) -> list:
   def init():
@@ -39,6 +43,7 @@ def empty_table(n_rows: int) -> list:
 class QTable:
   def __init__(self, das: bool) -> None:
     self.das = das
+    self.surrender = True
     self.hard = empty_table(18)
     self.soft = empty_table(9)
     self.pairs = empty_table(10)
@@ -70,9 +75,9 @@ class QTable:
 
 
   def actions(self, table: str) -> list[int]:
-    if table == "pairs_das": return PAIR_DAS_ACTIONS
-    if table == "pairs_ndas": return PAIR_NDAS_ACTIONS
-    return HARD_ACTIONS
+    if table == "pairs_das": return PAIR_DAS_ACTIONS_SURRENDER if self.surrender else PAIR_DAS_ACTIONS
+    if table == "pairs_ndas": return PAIR_NDAS_ACTIONS_SURRENDER if self.surrender else PAIR_NDAS_ACTIONS
+    return HARD_ACTIONS_SURRENDER if self.surrender else HARD_ACTIONS
 
   def best_action(self, table: str, key: int, upcard: int) -> int:
     row = self.row(table, key)
@@ -95,13 +100,15 @@ class QTable:
     for total in range(4, 22):
       acts = [self.best_action("hard", total, upcard) for upcard in range(1, 11)]
       modal = max(set(acts), key=acts.count)
-      self._hard_dbl[total] = modal
-      self._hard_nodbl[total] = HIT if modal == DOUBLE else modal
+      fallback = HIT if modal in (DOUBLE, SURRENDER) else modal
+      self._hard_dbl[total] = HIT if modal == SURRENDER else modal
+      self._hard_nodbl[total] = fallback
     for total in range(13, 22):
       acts = [self.best_action("soft", total, upcard) for upcard in range(1, 11)]
       modal = max(set(acts), key=acts.count)
-      self._soft_dbl[total] = modal
-      self._soft_nodbl[total] = HIT if modal == DOUBLE else modal
+      fallback = HIT if modal in (DOUBLE, SURRENDER) else modal
+      self._soft_dbl[total] = HIT if modal == SURRENDER else modal
+      self._soft_nodbl[total] = fallback
     self._dirty = False
 
   def get_strategy_arrays(self):
@@ -111,17 +118,23 @@ class QTable:
         self._hard_nodbl, self._soft_nodbl)
 
   def action_code(self, table: str, key: int, upcard: int) -> str:
-    """Return strategy code including DS vs DH distinction for doubles."""
     best = self.best_action(table, key, upcard)
-    if best != DOUBLE:
-      return ACTION_NAMES[best]
     actions = self.actions(table)
     row = self.row(table, key)
     col = upcard - 1
-    q = self.tbl(table)[row][col]
+    q_row = self.tbl(table)[row][col]
+    if best == SURRENDER:
+      non_surr = max([a for a in actions if a != SURRENDER], key=lambda a: q_row[a])
+      if non_surr == SPLIT: return "Rp"
+      if non_surr == DOUBLE:
+        non_dbl = max([a for a in actions if a not in (SURRENDER, DOUBLE)], key=lambda a: q_row[a])
+        return "Rs" if non_dbl == STAND else "Rh"
+      return "Rs" if non_surr == STAND else "Rh"
+    if best != DOUBLE:
+      return ACTION_NAMES[best]
     others = [a for a in actions if a != DOUBLE]
-    second = max(others, key=lambda a: q[a])
-    return "DS" if second == STAND else "DH"
+    second = max(others, key=lambda a: q_row[a])
+    return "Ds" if second == STAND else "Dh"
 
   def to_strategy_dicts(self) -> dict:
     result = {"hard": {}, "soft": {}, "pairs": {}}
@@ -249,6 +262,10 @@ def run_episode(
   actions = q.actions(table)
   action = random.choice(actions) if random.random() < epsilon else q.best_action(table, key, upcard)
 
+  if action == SURRENDER:
+    q.update(table, key, upcard, action, -0.5)
+    return
+
   gain = math.nan
   for _ in range(20):
     gain = sim.start_sim(hand, upcard, action, hard_dbl, soft_dbl)
@@ -256,8 +273,6 @@ def run_episode(
       break
   if math.isnan(gain):
     return
-
-
 
   q.update(table, key, upcard, action, gain)
 
@@ -364,8 +379,8 @@ def accuracy_report(out_dfs: dict[str, pd.DataFrame], folder: Path, das: bool) -
       for col in rl_df.columns:
         if col not in verified_df.columns:
           continue
-        rl_val = str(rl_df.loc[hand, col]).strip().upper()
-        ver_val = str(verified_df.loc[v_hand, col]).strip().upper()
+        rl_val = str(rl_df.loc[hand, col]).strip()
+        ver_val = str(verified_df.loc[v_hand, col]).strip()
         if rl_val != ver_val:
           wrong.append(f" {rl_name} {key} vs {col}: got={rl_val} expected={ver_val}")
 
@@ -390,7 +405,6 @@ if __name__ == "__main__":
   parser.add_argument("--enhc", action="store_true", default=False)
   parser.add_argument("--das", action="store_true", default=True)
   parser.add_argument("--ndas", dest="das", action="store_false")
-
   parser.add_argument("--episodes", type=int, default=50_000_000)
   args = parser.parse_args()
 
