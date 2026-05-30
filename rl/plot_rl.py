@@ -47,6 +47,9 @@ class QTable:
     self.hard = empty_table(18)
     self.soft = empty_table(9)
     self.pairs = empty_table(10)
+    self.hard_visits = [[[0] * _N_ACTIONS for _ in range(10)] for _ in range(18)]
+    self.soft_visits = [[[0] * _N_ACTIONS for _ in range(10)] for _ in range(9)]
+    self.pairs_visits = [[[0] * _N_ACTIONS for _ in range(10)] for _ in range(10)]
     self._dirty = True
     self._hard_dbl = [_NONE] * 22
     self._hard_nodbl = [_NONE] * 22
@@ -77,11 +80,19 @@ class QTable:
     q = self.tbl(table)[row][col]
     return max(self.actions(table), key=lambda a: q[a])
 
+  def visits_tbl(self, table: str) -> list:
+    if table == "hard": return self.hard_visits
+    if table == "soft": return self.soft_visits
+    return self.pairs_visits
+
   def update(self, table: str, key: int, upcard: int,
-         action: int, reward: float, alpha: float = 0.1) -> None:
+         action: int, reward: float) -> None:
     row = self.row(table, key)
     col = upcard - 1
     tbl = self.tbl(table)
+    visits = self.visits_tbl(table)
+    visits[row][col][action] += 1
+    alpha = 1.0 / visits[row][col][action]
     tbl[row][col][action] += alpha * (reward - tbl[row][col][action])
     self._dirty = True
 
@@ -216,16 +227,16 @@ def sample_hand(decks: int, upcard: int) -> list[int]:
   total = sum(counts[1:])
 
   def draw() -> int:
-    r = random.randrange(total)
+    remaining = random.randrange(total)
     for rank in range(1, 11):
-      r -= counts[rank]
-      if r < 0:
+      remaining -= counts[rank]
+      if remaining < 0:
         return rank
     return 10
 
-  c1 = draw(); counts[c1] -= 1
-  c2 = draw()
-  return [c1, c2]
+  first_card = draw(); counts[first_card] -= 1
+  second_card = draw()
+  return [first_card, second_card]
 
 
 
@@ -247,7 +258,6 @@ def run_episode(
   upcard: int,
   hand: list[int],
   epsilon: float,
-  alpha: float,
   hard_dbl: list[int],
   soft_dbl: list[int],
 ) -> None:
@@ -258,7 +268,7 @@ def run_episode(
   action = random.choice(actions) if random.random() < epsilon else q.best_action(table, key, upcard)
 
   if action == SURRENDER:
-    q.update(table, key, upcard, action, -0.5, alpha)
+    q.update(table, key, upcard, action, -0.5)
     if table in ("hard", "soft"):
       q.update_strategy_for(table, key)
     return
@@ -271,7 +281,7 @@ def run_episode(
   if math.isnan(gain):
     return
 
-  q.update(table, key, upcard, action, gain, alpha)
+  q.update(table, key, upcard, action, gain)
   if table in ("hard", "soft"):
     q.update_strategy_for(table, key)
 
@@ -282,8 +292,6 @@ def train(
   n_episodes: int = 50_000_000,
   epsilon_start: float = 0.1,
   epsilon_end: float = 0.01,
-  alpha_start: float = 0.1,
-  alpha_end: float = 0.001,
 ) -> QTable:
   sim = BlackjackSimulator(rules)
   q = QTable(das=rules.DAS)
@@ -294,16 +302,14 @@ def train(
 
   for ep in range(1, n_episodes + 1):
     epsilon = epsilon_start + (epsilon_end - epsilon_start) * ep / n_episodes
-    alpha = alpha_start + (alpha_end - alpha_start) * ep / n_episodes
     upcard = sample_upcard(weights)
     hand = sample_hand(rules.decks, upcard)
 
-    run_episode(sim, q, upcard, hand, epsilon, alpha, hard_dbl, soft_dbl)
+    run_episode(sim, q, upcard, hand, epsilon, hard_dbl, soft_dbl)
 
     if ep % log_every == 0:
       percent = 100 * ep // n_episodes
-      print(f" {ep:>12,} / {n_episodes:,} ({percent:3d}%) "
-          f"eps={epsilon:.3f} alpha={alpha:.4f}", flush=True)
+      print(f" {ep:>12,} / {n_episodes:,} ({percent:3d}%) eps={epsilon:.3f}", flush=True)
 
   return q
 
@@ -485,8 +491,8 @@ if __name__ == "__main__":
   print(f"Total time: {total_elapsed:.1f}s ({total_elapsed/60:.1f} min)\n")
   print(f" {'Episodes':<16} {'Iters/cell':<12} {'Errors':>6} {'Time':>8}")
   print("  " + "-"*46)
-  for ep, er, tm in zip(EPISODE_COUNTS, error_counts, ep_times):
-    print(f" {ep:<16,} {ep//STATE_ACTION_PAIRS:<12,} {er:>6} {tm:>7.1f}s")
+  for episode_count, error_count, elapsed_time in zip(EPISODE_COUNTS, error_counts, ep_times):
+    print(f" {episode_count:<16,} {episode_count//STATE_ACTION_PAIRS:<12,} {error_count:>6} {elapsed_time:>7.1f}s")
   print(f" {'TOTAL':<16} {'':<12} {'':<6} {total_elapsed:>7.1f}s")
 
   print("\nGenerating plot...")
@@ -494,14 +500,14 @@ if __name__ == "__main__":
   rule_str = (f"{args.decks}D {'S17' if args.s17 else 'H17'} "
         f"{'ENHC' if args.enhc else 'US'} {'DAS' if args.das else 'nDAS'}")
 
-  def fmt(n): return f"{n/1_000_000:.3g}M" if n >= 1_000_000 else (f"{n//1000}K" if n >= 1000 else str(n))
-  x = [ep // STATE_ACTION_PAIRS for ep in EPISODE_COUNTS]
+  def fmt(count): return f"{count/1_000_000:.3g}M" if count >= 1_000_000 else (f"{count//1000}K" if count >= 1000 else str(count))
+  iteration_values = [ep_count // STATE_ACTION_PAIRS for ep_count in EPISODE_COUNTS]
 
   figure, axes = plt.subplots()
-  axes.plot(x, error_counts, marker="o", label="Reinforcement Learning")
+  axes.plot(iteration_values, error_counts, marker="o", label="Reinforcement Learning")
   axes.set_xscale("log")
-  axes.set_xticks(x)
-  axes.set_xticklabels([fmt(n) for n in x])
+  axes.set_xticks(iteration_values)
+  axes.set_xticklabels([fmt(count) for count in iteration_values])
   axes.set_xlabel("Equivalent iterations per cell (episodes ÷ 1,210)")
   axes.set_ylabel("Incorrect Decisions")
   axes.set_title(f"Reinforcement Learning Convergence  |  {rule_str}")

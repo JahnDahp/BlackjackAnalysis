@@ -37,7 +37,7 @@ def calc_and_save_iterations(
   if iterations_override is not None:
     up_labels = ["2","3","4","5","6","7","8","9","10","A"]
     pair_order = [10,9,8,7,6,5,4,3,2,1]
-    pair_labels= ["10","9","8","7","6","5","4","3","2","A"]
+    pair_labels = ["10","9","8","7","6","5","4","3","2","A"]
     das_label = "DAS" if das else "NDAS"
     print(f"Using fixed {iterations_override:,} iterations per cell.", flush=True)
     for name, index, labels in [
@@ -197,7 +197,7 @@ def calc_and_save_iterations(
   up_labels=["2","3","4","5","6","7","8","9","10","A"]
 
   def json_idx(upcard_index):
-    return (upcard_index + 1) % 10  # up_labels=[2..A]; JSON stores ace at index 0
+    return (upcard_index + 1) % 10
 
   def build_hsd(hand_type, totals):
     rows=[]
@@ -227,8 +227,8 @@ def calc_and_save_iterations(
     return df
 
   def build_pairs(das):
-    pair_order=[10,9,8,7,6,5,4,3,2,1]
-    pair_labels=["10","9","8","7","6","5","4","3","2","A"]
+    pair_order = [10,9,8,7,6,5,4,3,2,1]
+    pair_labels = ["10","9","8","7","6","5","4","3","2","A"]
     das_key="DAS" if das else "nDAS"
     rows=[]
     for pair_val in pair_order:

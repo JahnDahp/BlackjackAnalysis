@@ -52,7 +52,7 @@ def build_strategy_arrays(
         hard_nodbl[total] = code_to_int(str(val), False)
   elif isinstance(hard_choices, list):
     for i, val in enumerate(hard_choices):
-      t = i + 4  # hard totals start at 4 (min hand: 2+2)
+      t = i + 4
       if 0 <= t <= 21:
         v = int(val) if val != _NONE else _NONE
         hard_dbl[t] = hard_nodbl[t] = v
@@ -64,7 +64,7 @@ def build_strategy_arrays(
         soft_nodbl[total] = code_to_int(str(val), False)
   elif isinstance(soft_choices, list):
     for i, val in enumerate(soft_choices):
-      t = i + 12  # soft totals start at 12 (min hand: A+A)
+      t = i + 12
       if 0 <= t <= 21:
         v = int(val) if val != _NONE else _NONE
         soft_dbl[t] = soft_nodbl[t] = v
@@ -105,7 +105,7 @@ class Shoe:
   def __init__(self, deck_number: int) -> None:
     self.deck_number = deck_number
     self.counts = [0] * 11
-    self.counts[10] = deck_number * 16  # 10/J/Q/K all map to rank 10
+    self.counts[10] = deck_number * 16
     for rank in range(1, 10):
       self.counts[rank] = deck_number * 4
     self._total: int = deck_number * 52

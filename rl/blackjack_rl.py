@@ -58,9 +58,9 @@ class QTable:
     self.rebuild_strategy()
 
   def row(self, table: str, key: int) -> int:
-    if table == "hard": return key - 4   # totals 4-21 → indices 0-17
-    if table == "soft": return key - 13  # totals 13-21 → indices 0-8
-    return key - 1                       # pairs 1-10 → indices 0-9
+    if table == "hard": return key - 4
+    if table == "soft": return key - 13
+    return key - 1
 
   def tbl(self, table: str) -> list:
     if table == "hard": return self.hard
@@ -225,16 +225,16 @@ def sample_hand(decks: int, upcard: int) -> list[int]:
   total = sum(counts[1:])
 
   def draw() -> int:
-    r = random.randrange(total)
+    remaining = random.randrange(total)
     for rank in range(1, 11):
-      r -= counts[rank]
-      if r < 0:
+      remaining -= counts[rank]
+      if remaining < 0:
         return rank
     return 10
 
-  c1 = draw(); counts[c1] -= 1
-  c2 = draw()
-  return [c1, c2]
+  first_card = draw(); counts[first_card] -= 1
+  second_card = draw()
+  return [first_card, second_card]
 
 
 

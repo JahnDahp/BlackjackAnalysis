@@ -182,8 +182,8 @@ class Calculator:
     counts = [0.0] * 7
     for hand, probability in results:
       hand_total = total_ranks(hand)
-      if 17 <= hand_total <= 20: counts[hand_total - 16] += probability  # 17-20 → indices 1-4
-      elif hand_total == 21: counts[6 if len(hand) == 2 else 5] += probability  # 6=natural, 5=non-natural
+      if 17 <= hand_total <= 20: counts[hand_total - 16] += probability
+      elif hand_total == 21: counts[6 if len(hand) == 2 else 5] += probability
       else: counts[0] += probability
     if not self.dealer_settings.ENHC: counts[6] = 0.0
     if normalize_flag: return self.normalize(counts)

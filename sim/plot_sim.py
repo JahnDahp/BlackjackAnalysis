@@ -140,13 +140,13 @@ def main() -> None:
   rule_str = (f"{args.decks}D {'S17' if args.s17 else 'H17'} "
         f"{'ENHC' if args.enhc else 'US'} {'DAS' if args.das else 'nDAS'}")
 
-  def fmt(n): return f"{n/1_000_000:.3g}M" if n >= 1_000_000 else (f"{n//1000}K" if n >= 1000 else str(n))
+  def fmt(count): return f"{count/1_000_000:.3g}M" if count >= 1_000_000 else (f"{count//1000}K" if count >= 1000 else str(count))
 
   figure, axes = plt.subplots()
   axes.plot(ITERATION_COUNTS, error_counts, marker="o", label="Monte Carlo Simulator")
   axes.set_xscale("log")
   axes.set_xticks(ITERATION_COUNTS)
-  axes.set_xticklabels([fmt(n) for n in ITERATION_COUNTS])
+  axes.set_xticklabels([fmt(count) for count in ITERATION_COUNTS])
   axes.set_xlabel("Iterations per cell")
   axes.set_ylabel("Incorrect Decisions")
   axes.set_title(f"Monte Carlo Simulator Convergence  |  {rule_str}")
